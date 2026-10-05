@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+    <name>speedpackcore</name>
+    <displayName><![CDATA[SpeedPack Core]]></displayName>
+    <version><![CDATA[1.0.0]]></version>
+    <description><![CDATA[Four speed-ups in one module: pages fetched before the click, menu clicks without a reload, instant add to cart and a lighter cart page.]]></description>
+    <author><![CDATA[Alhambra]]></author>
+    <tab><![CDATA[front_office_features]]></tab>
+    <is_configurable>1</is_configurable>
+    <need_instance>0</need_instance>
+    <limited_countries></limited_countries>
+</module>
