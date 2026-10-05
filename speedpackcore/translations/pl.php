@@ -25,3 +25,7 @@ $_MODULE['<{speedpackcore}prestashop>add_91e6cde963af2000218553722fc7a093'] = 'T
 $_MODULE['<{speedpackcore}prestashop>add_5d7d4a1efc3a63246d8dc4477085fd06'] = 'Minimalna ilość dla tego produktu to %d.';
 $_MODULE['<{speedpackcore}prestashop>add_1d08eb797f36eea444ac6e05196357b7'] = 'Nie ma już tyle sztuk tego produktu.';
 $_MODULE['<{speedpackcore}prestashop>remove_01ee38d724128172d34e274bd25b3fda'] = 'Koszyk wygasł – odśwież stronę.';
+$_MODULE['<{speedpackcore}prestashop>qty_01ee38d724128172d34e274bd25b3fda'] = 'Koszyk wygasł – odśwież stronę.';
+$_MODULE['<{speedpackcore}prestashop>qty_5d7d4a1efc3a63246d8dc4477085fd06'] = 'Minimalna ilość dla tego produktu to %d.';
+$_MODULE['<{speedpackcore}prestashop>qty_1d08eb797f36eea444ac6e05196357b7'] = 'Nie ma już tyle sztuk tego produktu.';
+$_MODULE['<{speedpackcore}prestashop>spcinstantcart_db752dfcfb9bfe3ee7372e3f35b39ea2'] = 'Nie zmieniono ilości';

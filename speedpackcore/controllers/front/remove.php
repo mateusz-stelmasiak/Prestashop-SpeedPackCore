@@ -81,49 +81,16 @@ class SpeedpackcoreRemoveModuleFrontController extends ModuleFrontController
         CartRule::autoRemoveFromCart($this->context);
         CartRule::autoAddToCart($this->context);
 
-        $count = (int) Db::getInstance()->getValue(
-            'SELECT SUM(quantity) FROM `' . _DB_PREFIX_ . 'cart_product` WHERE id_cart = ' . (int) $cart->id
-        );
+        $count = SpcCartAnswer::count($cart);
 
         return [
             'ok' => count($failed) < count($lines),
             'failed' => $failed,
             'count' => $count,
-            'label' => $this->itemsLabel($count),
-            'totals' => $count ? $this->totals($cart) : null,
+            'label' => SpcCartAnswer::itemsLabel($this->context, $count),
+            'totals' => $count ? SpcCartAnswer::totals($this->context, $cart) : null,
             // vouchers came or went: the page shows different summary lines, so it re-renders them
             'rules' => count($cart->getCartRules()) !== $rulesBefore,
         ];
-    }
-
-    /** the cart page's summary values, formatted like the theme shows them */
-    private function totals(Cart $cart)
-    {
-        $tax = !Product::getTaxCalculationMethod((int) $cart->id_customer);
-        $products = $cart->getOrderTotal($tax, Cart::ONLY_PRODUCTS);
-        $discount = $cart->getOrderTotal($tax, Cart::ONLY_DISCOUNTS);
-        $shipping = $cart->getOrderTotal($tax, Cart::ONLY_SHIPPING);
-        $total = $cart->getOrderTotal($tax, Cart::BOTH);
-
-        return [
-            'products' => $this->price($products),
-            'discount' => $discount > 0 ? '-' . $this->price($discount) : '',
-            'shipping' => $shipping > 0 ? $this->price($shipping) : $this->trans('Free', [], 'Shop.Theme.Checkout'),
-            'total' => $this->price($total),
-        ];
-    }
-
-    private function price($amount)
-    {
-        // PrestaShop 1.7.6+ formats prices through the locale
-        return $this->context->getCurrentLocale()->formatPrice($amount, $this->context->currency->iso_code);
-    }
-
-    /** "1 item" / "3 items", in the shop's own wording (the theme's js-subtotal label) */
-    private function itemsLabel($count)
-    {
-        return $count === 1
-            ? $this->trans('1 item', [], 'Shop.Theme.Checkout')
-            : $this->trans('%count% items', ['%count%' => $count], 'Shop.Theme.Checkout');
     }
 }

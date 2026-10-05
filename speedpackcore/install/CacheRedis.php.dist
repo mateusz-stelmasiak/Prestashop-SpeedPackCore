@@ -1,0 +1,287 @@
+<?php
+/**
+ * Redis back end for PrestaShop's data cache.
+ *
+ * Written to override/classes/cache/CacheRedis.php by the SpeedPack Core
+ * module - edit the module's template, not the copy. The settings below are
+ * filled in by the module each time they are saved, because this class is
+ * built while PrestaShop is still starting and cannot read its configuration
+ * from the database (that is what it is caching).
+ *
+ * Every failure falls back to "no cache" rather than an error page: if Redis
+ * is down, the shop is slower, not broken.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+
+if (!defined('_PS_VERSION_')) {
+    exit;
+}
+
+class CacheRedis extends Cache
+{
+    /* @speedpackcore:settings */
+    protected static $settings = array();
+
+    /** @var Redis|null */
+    protected $redis;
+
+    protected $is_connected = false;
+
+    /** Every key this shop writes starts with this, so a flush never touches anyone else's. */
+    protected $prefix = '';
+
+    public function __construct()
+    {
+        $this->connect();
+    }
+
+    public function __destruct()
+    {
+        $this->close();
+    }
+
+    public function isConnected()
+    {
+        return $this->is_connected;
+    }
+
+    public static function settings()
+    {
+        return self::$settings;
+    }
+
+    public function connect()
+    {
+        $this->is_connected = false;
+
+        if (!class_exists('Redis')) {
+            return;
+        }
+
+        $s = array_merge(array(
+            'host' => '127.0.0.1',
+            'port' => 6379,
+            'password' => '',
+            'database' => 0,
+            'prefix' => '',
+            'timeout' => 0.5,
+        ), self::$settings);
+
+        $this->prefix = (string) $s['prefix'];
+
+        try {
+            $redis = new Redis();
+
+            /* A host starting with a slash is a unix socket. */
+            if (strpos((string) $s['host'], '/') === 0) {
+                $ok = $redis->connect((string) $s['host']);
+            } else {
+                $ok = $redis->connect((string) $s['host'], (int) $s['port'], (float) $s['timeout']);
+            }
+            if (!$ok) {
+                return;
+            }
+            if ((string) $s['password'] !== '' && !$redis->auth((string) $s['password'])) {
+                return;
+            }
+            if ((int) $s['database'] > 0 && !$redis->select((int) $s['database'])) {
+                return;
+            }
+
+            $redis->setOption(Redis::OPT_READ_TIMEOUT, 1.0);
+            $redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_PHP);
+            $redis->setOption(Redis::OPT_SCAN, Redis::SCAN_RETRY);
+
+            $this->redis = $redis;
+            $this->is_connected = true;
+        } catch (Exception $e) {
+            $this->redis = null;
+        }
+    }
+
+    protected function close()
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        try {
+            $this->redis->close();
+        } catch (Exception $e) {
+            /* nothing to do */
+        }
+        $this->is_connected = false;
+
+        return true;
+    }
+
+    /** A Redis error mid-request: stop using it for the rest of the request. */
+    protected function lost()
+    {
+        $this->is_connected = false;
+        $this->redis = null;
+
+        return false;
+    }
+
+    protected function key($key)
+    {
+        return $this->prefix . $key;
+    }
+
+    /* ------------------------------------------------------------------ *
+     *  The Cache contract
+     * ------------------------------------------------------------------ */
+
+    protected function _set($key, $value, $ttl = 0)
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        try {
+            return $ttl > 0
+                ? (bool) $this->redis->setex($this->key($key), (int) $ttl, $value)
+                : (bool) $this->redis->set($this->key($key), $value);
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function _get($key)
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        try {
+            return $this->redis->get($this->key($key));
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function _exists($key)
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        try {
+            return (bool) $this->redis->exists($this->key($key));
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function _delete($key)
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        try {
+            $this->redis->del($this->key($key));
+
+            return true;
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function _deleteMulti(array $keyArray)
+    {
+        if (!$this->is_connected || !$keyArray) {
+            return false;
+        }
+
+        try {
+            foreach (array_chunk($keyArray, 500) as $chunk) {
+                $this->redis->del(array_map(array($this, 'key'), $chunk));
+            }
+
+            return true;
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function _writeKeys()
+    {
+        return $this->is_connected;
+    }
+
+    /** Empties this shop's keys only - never FLUSHDB, the server may be shared. */
+    public function flush()
+    {
+        return $this->deleteMatching('*');
+    }
+
+    /* Redis tracks expiry itself, so the base class's key list is skipped,
+     * as PrestaShop's own Memcached and APCu back ends do. */
+
+    public function set($key, $value, $ttl = 0)
+    {
+        return $this->_set($key, $value, $ttl);
+    }
+
+    public function get($key)
+    {
+        return $this->_get($key);
+    }
+
+    public function exists($key)
+    {
+        return $this->_exists($key);
+    }
+
+    public function delete($key)
+    {
+        if ($key == '*') {
+            $this->flush();
+        } elseif (strpos($key, '*') === false) {
+            $this->_delete($key);
+        } else {
+            $this->deleteMatching($key);
+        }
+
+        return true;
+    }
+
+    /**
+     * Delete every key of this shop matching a PrestaShop wildcard pattern,
+     * where "*" is the only special character.
+     */
+    protected function deleteMatching($pattern)
+    {
+        if (!$this->is_connected) {
+            return false;
+        }
+
+        $glob = $this->globEscape($this->prefix) . implode('*', array_map(
+            array($this, 'globEscape'),
+            explode('*', $pattern)
+        ));
+
+        try {
+            $iterator = null;
+            while (($keys = $this->redis->scan($iterator, $glob, 1000)) !== false) {
+                if ($keys) {
+                    $this->redis->del($keys);
+                }
+            }
+
+            return true;
+        } catch (Exception $e) {
+            return $this->lost();
+        }
+    }
+
+    protected function globEscape($text)
+    {
+        return addcslashes((string) $text, '*?[]\\');
+    }
+}

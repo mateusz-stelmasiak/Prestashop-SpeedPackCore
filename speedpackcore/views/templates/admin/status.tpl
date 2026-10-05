@@ -12,5 +12,10 @@
       <tr><td style="width:260px"><strong>{$label|escape:'html':'UTF-8'}</strong></td><td>{$value|escape:'html':'UTF-8'}</td></tr>
     {/foreach}
   </tbody></table>
+  {if isset($spc_status.notes)}
+    {foreach from=$spc_status.notes item=note}
+      <div class="alert {if $note.level == 'warning'}alert-warning{else}alert-info{/if}">{$note.text|escape:'html':'UTF-8'}</div>
+    {/foreach}
+  {/if}
   {if $spc_status.help}<p class="help-block">{$spc_status.help|escape:'html':'UTF-8'}</p>{/if}
 </div>

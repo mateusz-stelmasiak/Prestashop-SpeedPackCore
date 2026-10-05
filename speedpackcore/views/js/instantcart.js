@@ -93,7 +93,7 @@
     var text = document.createElement('div');
     text.className = 'ic-text';
     var head = document.createElement('strong');
-    head.textContent = error ? (T.error || 'Error') : action ? (T.removed || 'Removed') : (T.added || 'Added');
+    head.textContent = item.head ? item.head : error ? (T.error || 'Error') : action ? (T.removed || 'Removed') : (T.added || 'Added');
     var line = document.createElement('span');
     line.textContent = error ? error : item.name + (qty > 1 ? ' × ' + qty : '');
     text.appendChild(head);
@@ -720,6 +720,125 @@
       e.preventDefault();
       e.stopImmediatePropagation();
     }, true);
+  }
+
+  /* ----- quantity on the cart page ----- */
+
+  // +/- and a typed number change the line at once; quick changes reach the shop as one request
+  // with the quantity the shopper ended on, and its answer brings the line total and the totals
+  var QTY_SEL = '.js-cart-line-product-quantity, input[name="product-quantity-spin"]';
+  var QTY_BTN = '.bootstrap-touchspin-up, .bootstrap-touchspin-down, .js-increase-product-quantity, .js-decrease-product-quantity';
+  var qtyBusy = 0;   // lines whose new quantity the shop has not confirmed yet
+  function cartLine(el) { return el.closest && el.closest('.cart-item, .cart-items > li'); }
+  function qtyState(input) {
+    if (!input._icQty) {
+      var n = parseInt(input.getAttribute('value'), 10) || parseInt(input.value, 10) || 1;
+      var p = { p: +input.getAttribute('data-product-id') || 0, a: 0, c: 0 };
+      try {
+        var u = new URL(input.getAttribute('data-up-url') || input.getAttribute('data-update-url') || '', location.href);
+        p.p = +u.searchParams.get('id_product') || p.p;
+        p.a = +u.searchParams.get('id_product_attribute') || 0;
+        p.c = +u.searchParams.get('id_customization') || 0;
+      } catch (e) { /* no URL support */ }
+      input._icQty = { shown: n, timer: 0, waiting: false, p: p };
+    }
+    return input._icQty;
+  }
+  // the most specific match wins (a list selector would return the outer span first)
+  function lineTotal(line) {
+    var sels = ['.product-line-grid-right .product-price strong', '.product-total .value', '.product-line-grid-right .product-price'];
+    for (var i = 0; i < sels.length; i++) { var el = line.querySelector(sels[i]); if (el) return el; }
+    return null;
+  }
+  function showQty(input, n) {
+    var st = qtyState(input), line = cartLine(input);
+    var min = Math.max(1, parseInt(input.getAttribute('min'), 10) || 1);
+    n = Math.max(min, n | 0);
+    if (n === st.shown) { input.value = n; return; }
+    setCount(readCount() + n - st.shown);
+    st.shown = n;
+    input.value = n;
+    var total = line && lineTotal(line);
+    if (total) total.classList.add('ic-pending');
+    pendingTotals(true);
+    if (!st.waiting) { st.waiting = true; qtyBusy++; }
+    clearTimeout(st.timer);
+    st.timer = setTimeout(function () { sendQty(input); }, BATCH_MS + 100);
+  }
+  function sendQty(input) {
+    var st = qtyState(input), line = cartLine(input), wanted = st.shown;
+    var body = new FormData();
+    body.set('token', (window.prestashop && window.prestashop.static_token) || '');
+    body.set('p', st.p.p); body.set('a', st.p.a); body.set('c', st.p.c); body.set('qty', wanted);
+    chain = chain.then(function () { return post(C.qtyUrl, body); }).then(function (res) {
+      if (res && res.fallback) { location.reload(); return; }
+      if (!res || res.quantity === undefined) throw new Error((res && res.error) || '');
+      var newer = st.shown !== wanted;   // the shopper kept clicking while this was on its way
+      if (!newer) {
+        if (res.quantity !== st.shown) { setCount(readCount() + res.quantity - st.shown); st.shown = res.quantity; input.value = res.quantity; }
+        st.waiting = false;
+        qtyBusy--;
+        var total = line && lineTotal(line);
+        if (total) { if (res.line) total.textContent = res.line; total.classList.remove('ic-pending'); }
+        if (!qtyBusy && !pending && res.count !== undefined) setCount(res.count);
+        if (!qtyBusy) {
+          var patched = patchTotals(res);
+          pendingTotals(false);
+          if (res.rules || !patched || C.notify) refreshCart({ p: st.p.p, a: st.p.a, c: st.p.c }, true);
+          else emit('updatedCart', { eventType: 'updateCart', resp: {} });
+        }
+      }
+      if (!res.ok) { toast(lineItem(line), wanted, res.error || T.error); haptic('error'); } else if (!newer) haptic('ok');
+    }).catch(function (err) {
+      toast(lineItem(line), wanted, (err && err.message) || T.error);
+      haptic('error');
+      // the page no longer knows what the cart holds: show the shop's own version of it
+      if (st.shown === wanted) setTimeout(function () { location.reload(); }, 1800);
+    });
+  }
+  function lineItem(line) {
+    var name = line && line.querySelector('.product-line-info a, .label, .product-title');
+    var img = line && line.querySelector('.product-line-grid-left img, .product-image img, img');
+    return { name: name ? name.textContent.trim() : '', img: img ? (img.currentSrc || img.src) : '', head: T.qtyError || '' };
+  }
+
+  if (C.qtyUrl) {
+    // the theme's spinner starts on mousedown / touchstart: it must never see these
+    ['mousedown', 'touchstart'].forEach(function (type) {
+      document.addEventListener(type, function (e) {
+        var btn = e.target.closest && e.target.closest(QTY_BTN);
+        if (btn && cartLine(btn) && cartLine(btn).querySelector(QTY_SEL)) e.stopImmediatePropagation();
+      }, true);
+    });
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest(QTY_BTN);
+      var line = btn && cartLine(btn), input = line && line.querySelector(QTY_SEL);
+      if (!input) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var up = btn.matches('.bootstrap-touchspin-up, .js-increase-product-quantity');
+      showQty(input, qtyState(input).shown + (up ? 1 : -1));
+      haptic('tap');
+    }, true);
+    // a typed number counts when it is confirmed (Enter, leaving the field)
+    ['keyup', 'keydown', 'focusout', 'change'].forEach(function (type) {
+      document.addEventListener(type, function (e) {
+        var input = e.target;
+        if (!input.matches || !input.matches(QTY_SEL) || !cartLine(input)) return;
+        e.stopImmediatePropagation();
+        if (type === 'keydown') { if (e.key === 'Enter') e.preventDefault(); return; }
+        if (type === 'keyup' && e.key !== 'Enter') return;
+        var n = parseInt(input.value, 10), st = qtyState(input);
+        if (n === 0) {
+          var del = cartLine(input).querySelector('[data-link-action="delete-from-cart"], a.remove-from-cart');
+          input.value = st.shown;
+          if (del) del.click();
+          return;
+        }
+        if (!(n > 0)) { input.value = st.shown; return; }
+        showQty(input, n);
+      }, true);
+    });
   }
 
   // capture phase: runs before the theme's own (jQuery) handler, which it then stops

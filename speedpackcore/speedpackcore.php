@@ -18,6 +18,11 @@ if (!defined('_PS_VERSION_')) {
 }
 
 require_once dirname(__FILE__) . '/classes/SpcFeature.php';
+require_once dirname(__FILE__) . '/classes/SpcCartAnswer.php';
+require_once dirname(__FILE__) . '/classes/SpcCacheBackend.php';
+require_once dirname(__FILE__) . '/classes/SpcOpcache.php';
+require_once dirname(__FILE__) . '/classes/SpcWarmup.php';
+require_once dirname(__FILE__) . '/classes/SpcCache.php';
 require_once dirname(__FILE__) . '/classes/SpcInstantCart.php';
 require_once dirname(__FILE__) . '/classes/SpcInstantNav.php';
 require_once dirname(__FILE__) . '/classes/SpcSmartPrefetch.php';
@@ -28,6 +33,9 @@ class SpeedPackCore extends Module
 
     /** the separate modules this pack replaces; with both on, every part would run twice */
     public const REPLACES = ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed'];
+
+    /** @var SpcCache */
+    private $cache;
 
     /** @var SpcSmartPrefetch */
     private $smartPrefetch;
@@ -42,7 +50,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -52,9 +60,10 @@ class SpeedPackCore extends Module
         parent::__construct();
 
         $this->displayName = $this->l('SpeedPack Core');
-        $this->description = $this->l('Four speed-ups in one module: pages fetched before the click, menu clicks without a reload, instant add to cart and a lighter cart page.');
+        $this->description = $this->l('Speed-ups in one module: Redis, APCu or Memcached data cache, pages fetched before the click, menu clicks without a reload, instant cart changes and a lighter cart page.');
         $this->confirmUninstall = $this->l('The shop goes back to normal page loads and the standard add to cart. Remove SpeedPack Core?');
 
+        $this->cache = new SpcCache($this, $this->context, 'Cache');
         $this->smartPrefetch = new SpcSmartPrefetch($this, $this->context, 'SmartPrefetch');
         $this->instantNav = new SpcInstantNav($this, $this->context, 'InstantNav');
         $this->instantCart = new SpcInstantCart($this, $this->context, 'InstantCart');
@@ -64,6 +73,7 @@ class SpeedPackCore extends Module
     public function parts()
     {
         return [
+            'cache' => $this->cache,
             'smartprefetch' => $this->smartPrefetch,
             'instantnav' => $this->instantNav,
             'instantcart' => $this->instantCart,
@@ -88,7 +98,13 @@ class SpeedPackCore extends Module
     public function uninstall()
     {
         foreach ($this->parts() as $part) {
-            $part->uninstall();
+            if (!$part->uninstall()) {
+                // the data cache could not be switched off: removing the module now would leave
+                // PrestaShop pointed at a cache class that is about to go
+                $this->_errors[] = $this->l('The data cache could not be switched off (is app/config/parameters.php writable?). Switch it off in the Cache section first.');
+
+                return false;
+            }
         }
         Configuration::deleteByName(self::K_CARTSPEED);
 
@@ -131,6 +147,9 @@ class SpeedPackCore extends Module
 
     public function getContent()
     {
+        if (Tools::getValue('spc_ajax') === 'warmup') {
+            $this->cache->ajaxWarmup();
+        }
         $out = '';
         foreach (['actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews'] as $hook) {
             if (!$this->isRegisteredInHook($hook)) {

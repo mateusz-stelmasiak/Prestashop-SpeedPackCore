@@ -27,6 +27,7 @@ class SpcInstantCart extends SpcFeature
     public const K_NOTIFY = 'SPC_IC_NOTIFY';
     public const K_LISTING = 'SPC_IC_LISTING';
     public const K_REMOVE = 'SPC_IC_REMOVE';
+    public const K_QTY = 'SPC_IC_QTY';
 
     /** @var array|null composer products (they need a composition: no quick add from lists) */
     private static $composed;
@@ -36,6 +37,8 @@ class SpcInstantCart extends SpcFeature
         return Configuration::updateValue(self::K_ENABLED, 1)
             && Configuration::updateValue(self::K_NOTIFY, 0)
             && Configuration::updateValue(self::K_LISTING, 1)
+            && Configuration::updateValue(self::K_REMOVE, 1)
+            && Configuration::updateValue(self::K_QTY, 1)
             && $this->registerHooks();
     }
 
@@ -72,6 +75,7 @@ class SpcInstantCart extends SpcFeature
         Configuration::deleteByName(self::K_NOTIFY);
         Configuration::deleteByName(self::K_LISTING);
         Configuration::deleteByName(self::K_REMOVE);
+        Configuration::deleteByName(self::K_QTY);
         Configuration::deleteByName('SPC_IC_SOUND');
 
         return true;
@@ -91,6 +95,8 @@ class SpcInstantCart extends SpcFeature
             'notify' => (int) Configuration::get(self::K_NOTIFY),
             // the cart page's bin: the line goes at once, the lean endpoint deletes it
             'removeUrl' => self::on(self::K_REMOVE) && $page === 'cart' ? $this->context->link->getModuleLink($this->name, 'remove', [], true) : '',
+            // the cart page's +/- and typed quantities: shown at once, sent once
+            'qtyUrl' => self::on(self::K_QTY) && $page === 'cart' ? $this->context->link->getModuleLink($this->name, 'qty', [], true) : '',
             't' => [
                 'added' => $this->l('Added to cart'),
                 'addedShort' => $this->l('Added'),
@@ -99,6 +105,7 @@ class SpcInstantCart extends SpcFeature
                 'error' => $this->l('Could not add to cart'),
                 'removed' => $this->l('Removed from cart'),
                 'undo' => $this->l('Undo'),
+                'qtyError' => $this->l('Quantity not changed'),
             ],
         ]]);
         $controller->registerJavascript('instantcart', 'modules/' . $this->name . '/views/js/instantcart.js', ['position' => 'bottom', 'priority' => 40, 'attributes' => 'defer']);
@@ -182,6 +189,7 @@ class SpcInstantCart extends SpcFeature
             self::save(self::K_NOTIFY, Tools::getValue(self::K_NOTIFY) ? 1 : 0);
             self::save(self::K_LISTING, Tools::getValue(self::K_LISTING) ? 1 : 0);
             self::save(self::K_REMOVE, Tools::getValue(self::K_REMOVE) ? 1 : 0);
+            self::save(self::K_QTY, Tools::getValue(self::K_QTY) ? 1 : 0);
             $out .= $this->displayConfirmation($this->l('Settings updated'));
         }
         // what the shop actually uses, so a setting that "does not stick" is visible at once
@@ -212,6 +220,7 @@ class SpcInstantCart extends SpcFeature
             self::K_NOTIFY => (int) Configuration::get(self::K_NOTIFY),
             self::K_LISTING => self::on(self::K_LISTING) ? 1 : 0,
             self::K_REMOVE => self::on(self::K_REMOVE) ? 1 : 0,
+            self::K_QTY => self::on(self::K_QTY) ? 1 : 0,
         ];
 
         return $out . $helper->generateForm([['form' => [
@@ -221,6 +230,7 @@ class SpcInstantCart extends SpcFeature
                 $switch(self::K_ENABLED, $this->l('Instant add to cart'), $this->l('The button reacts at once; the product is sent to a lean endpoint in the background.')),
                 $switch(self::K_LISTING, $this->l('Add button on product lists'), $this->l('An instant add-to-cart button next to the product link in category lists, search and the home page – for products that need no choice.')),
                 $switch(self::K_REMOVE, $this->l('Instant remove in the cart'), $this->l('The bin takes the line away at once, with an undo; the shop deletes it in the background and only the totals are refreshed.')),
+                $switch(self::K_QTY, $this->l('Instant quantity change in the cart'), $this->l('The + and - buttons and a typed quantity change the line at once. Quick clicks reach the shop as one request with the final quantity; the line total and the totals follow from its answer.')),
                 $switch(self::K_NOTIFY, $this->l('Tell other modules (updateCart event)'), $this->l('Off: no extra request after adding. Turn on only if a module (e.g. an analytics add_to_cart tag or a mini-cart dropdown) needs the event.')),
             ],
             'submit' => ['title' => $this->l('Save')],
