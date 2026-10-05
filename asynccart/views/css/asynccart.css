@@ -1,0 +1,38 @@
+/**
+ * AsyncCart
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+/* numbers waiting for the shop's answer */
+.ac-pending { opacity: .45; animation: ac-pending 1s ease-in-out infinite alternate; }
+@keyframes ac-pending { to { opacity: .2; } }
+
+/* the message card: "Removed" with Undo, or why a change was refused */
+.ac-toast {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 1060;
+  display: flex; align-items: center; gap: .75rem;
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: .7rem .7rem .7rem 1rem; border-radius: 14px;
+  background: #1d2a5b; color: #fff; box-shadow: 0 10px 30px rgba(17, 24, 54, .28);
+  transform: translateY(140%); opacity: 0; pointer-events: none;
+  transition: transform .2s cubic-bezier(.2, 1.2, .4, 1), opacity .15s ease;
+}
+.ac-toast.is-on { transform: none; opacity: 1; pointer-events: auto; }
+.ac-toast.is-error { background: #9e2a24; }
+.ac-text { flex: 1; min-width: 0; display: grid; gap: .1rem; line-height: 1.25; }
+.ac-text strong { font-size: .92rem; }
+.ac-text span { overflow: hidden; font-size: .82rem; opacity: .85; text-overflow: ellipsis; white-space: nowrap; }
+.ac-undo { flex: none; border: 0; border-radius: 10px; padding: .5rem .9rem; background: #fff; color: #1d2a5b; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
+.ac-undo:hover { background: #e8ecf7; }
+.ac-undo:focus-visible { outline: 3px solid #5bb8d6; outline-offset: 2px; }
+
+@media (max-width: 575px) {
+  .ac-toast { left: .75rem; right: .75rem; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); max-width: none; }
+  .ac-undo { padding: .6rem 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac-toast { transition: opacity .2s ease; transform: none; }
+  .ac-pending { animation: none; }
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+## AsyncCart 1.0.0
+
+The instant cart page as a module of its own: quantity changes sent once with the final quantity, removal with Undo (also after the shop has deleted the line), totals from lean endpoints. Stands aside when SpeedPack Core's InstantCart handles the cart page.
+
 ## 1.1.0
 
 - **Cache section:** a data cache in Redis, APCu or Memcached, switched on only after it passes a live test (connect, password, write and read). If the server goes down later, the shop keeps working without it.

@@ -91,6 +91,23 @@
 - PrestaShop checks "does this address exist?" for every price and tax in the cart; CartSpeed remembers the answer for the rest of the page
 - 73 identical queries → 4 on one cart page (measured), with an on/off switch
 
+## Also in the pack: AsyncCart
+
+<img src="media/asynccart-logo.png" alt="" width="64" align="left">
+
+**Just the instant cart page, as a module of its own.** For shops that want only this part, without the rest of SpeedPack Core. **[asynccart-1.0.0.zip](dist/asynccart-1.0.0.zip)** · source in [`asynccart/`](asynccart/)
+
+<br clear="left">
+
+- **Quantity:** +, − and a typed number change the line and the header count at once; clicks within the wait (400 ms by default, 100–2000 ms) reach the shop as one request with the final quantity
+- **Remove:** the line slides away at once, with **Undo** for 5 seconds, even after the shop has deleted it; typing 0 removes too
+- **Totals** come back from lean endpoints and are updated in place; the page re-renders only when vouchers change or the cart empties
+- **Refusals** (stock, minimum quantity) put the number back with the shop's own message
+- The theme's own +/− handlers never see these clicks, so nothing runs twice
+- **Stands aside** when SpeedPack Core's InstantCart already handles the cart page, so two modules never answer one click
+
+<p align="center"><img src="media/asynccart-cards.png" alt="AsyncCart's message cards: Removed from cart with Undo, and Quantity not changed" width="70%"></p>
+
 ## Installation
 
 1. Download **[speedpackcore-1.1.0.zip](dist/speedpackcore-1.1.0.zip)**.
@@ -120,7 +137,7 @@
 
 ## Source
 
-The module lives in [`speedpackcore/`](speedpackcore/); installable zips are in [`dist/`](dist/). See the [changelog](CHANGELOG.md).
+SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`asynccart/`](asynccart/); installable zips are in [`dist/`](dist/). See the [changelog](CHANGELOG.md).
 
 ## Other languages
 
