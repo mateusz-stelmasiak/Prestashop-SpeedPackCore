@@ -33,6 +33,13 @@
   function token() { return (window.prestashop && window.prestashop.static_token) || ''; }
   function emit(name, data) { var ps = window.prestashop; if (ps && typeof ps.emit === 'function') ps.emit(name, data); }
   function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* none */ } }
+  // the shop's own pages only: anything else is not followed
+  function leave(url) {
+    try {
+      var u = new URL(url, location.href);
+      if (u.origin === location.origin && /^https?:$/.test(u.protocol)) location.assign(u.href);
+    } catch (e) { /* not a URL: stay */ }
+  }
   function post(url, body) {
     return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { Accept: 'application/json' }, keepalive: true })
       .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
@@ -259,7 +266,7 @@
     function restore(e) { expand(e.row); setCount(readCount() + e.qty); }
     chain = chain.then(function () { return post(C.removeUrl, body); }).then(function (res) {
       busy--;
-      if (res && res.fallback) { location.href = batch[0].row.querySelector(DEL_SEL).href; return; }
+      if (res && res.fallback) { leave(batch[0].row.querySelector(DEL_SEL).href); return; }
       if (!res || !res.ok) throw new Error((res && res.error) || '');
       (res.failed || []).forEach(function (i) { if (batch[i]) { restore(batch[i]); batch[i].failed = true; } });
       batch.forEach(function (e) { if (!e.failed) e.done = true; });

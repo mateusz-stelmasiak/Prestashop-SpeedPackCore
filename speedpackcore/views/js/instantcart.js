@@ -172,10 +172,22 @@
   /* ----- the button itself: a line-drawn jar that "loads" while the shop saves, and a multiplier ----- */
 
   var JAR_D = 'M9.2 2.8h5.6v2.4H9.2z M8.6 5.2 7 8.2v11.3c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V8.2l-1.6-3 M7 12.2h10';
-  var JAR = '<svg class="ic-jar" viewBox="0 0 24 24" aria-hidden="true">'
-    + '<path class="ic-jar-base" pathLength="100" d="' + JAR_D + '"/>'
-    + '<path class="ic-jar-run" pathLength="100" d="' + JAR_D + '"/>'
-    + '<path class="ic-jar-tick" pathLength="100" d="M9.4 16.4l1.9 1.9 3.6-3.9"/></svg>';   // drawn in once the shop confirms
+  // built as elements, never as markup
+  function jar() {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'ic-jar');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    [['ic-jar-base', JAR_D], ['ic-jar-run', JAR_D], ['ic-jar-tick', 'M9.4 16.4l1.9 1.9 3.6-3.9']].forEach(function (p) {   // the tick is drawn in once the shop confirms
+      var path = document.createElementNS(NS, 'path');
+      path.setAttribute('class', p[0]);
+      path.setAttribute('pathLength', '100');
+      path.setAttribute('d', p[1]);
+      svg.appendChild(path);
+    });
+    return svg;
+  }
   var lastBump = 0;
   function bump(el) {
     var now = Date.now();
@@ -249,7 +261,11 @@
           hap = document.createElement('label');
           hap.className = 'ic-hap';
           hap.setAttribute('aria-hidden', 'true');
-          hap.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+          var sw = document.createElement('input');
+          sw.type = 'checkbox';
+          sw.setAttribute('switch', '');
+          sw.tabIndex = -1;
+          hap.appendChild(sw);
           document.body.appendChild(hap);
         }
         hap.click();
@@ -341,9 +357,11 @@
   function paint(btn) {
     var st = btn._ic;
     if (!st) return;
-    if (!st.html) {
-      st.html = btn.innerHTML;
+    if (!st.saved) {
+      // the button's own content is set aside as nodes and put back as they were
       btn.style.minWidth = btn.getBoundingClientRect().width + 'px';
+      st.saved = document.createDocumentFragment();
+      while (btn.firstChild) st.saved.appendChild(btn.firstChild);
     }
     btn.classList.add('ic-state');
     btn.classList.toggle('is-saving', st.pending > 0);
@@ -359,13 +377,16 @@
     }
     st.drawn = true;
     // no word, just the jar (a tick appears in it when saved) and ×N
-    btn.innerHTML = JAR + (st.count > 1 ? '<b class="ic-mult">\u00d7' + st.count + '</b>' : '');
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    btn.appendChild(jar());
+    if (st.count > 1) { var mb = document.createElement('b'); mb.className = 'ic-mult'; mb.textContent = '\u00d7' + st.count; btn.appendChild(mb); }
     btn.setAttribute('aria-label', (T.added || 'Added') + (st.count > 1 ? ' \u00d7' + st.count : ''));
   }
   function restore(btn) {
     var st = btn._ic;
     if (!st) return;
-    btn.innerHTML = st.html;
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    if (st.saved) btn.appendChild(st.saved);
     btn.style.minWidth = '';
     btn.classList.remove('ic-state', 'is-saving', 'is-done');
     btn.removeAttribute('aria-label');
@@ -398,6 +419,14 @@
     if (extra) headers['X-Requested-With'] = 'XMLHttpRequest';
     return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: headers, keepalive: true })
       .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
+  }
+
+  // the shop's own pages only: anything else is not followed
+  function leave(url) {
+    try {
+      var u = new URL(url, location.href);
+      if (u.origin === location.origin && /^https?:$/.test(u.protocol)) location.assign(u.href);
+    } catch (e) { /* not a URL: stay */ }
   }
 
   function emit(name, data) {
@@ -687,7 +716,7 @@
       pending -= batch.length;
       if (res && res.fallback) {
         // the lean path can't do it: the shop's own delete link (it reloads the cart)
-        location.href = batch[0].href;
+        leave(batch[0].href);
         return;
       }
       if (!res || !res.ok) throw new Error((res && res.error) || '');

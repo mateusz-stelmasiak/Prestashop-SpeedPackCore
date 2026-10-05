@@ -1,5 +1,14 @@
 # Changelog
 
+## SpeedPack Core 1.1.1
+
+Security fixes from the PrestaShop Addons review:
+- The prefetch worker is a static file; the `sw` controller that printed it is gone (and removed on upgrade). The module's `.htaccess` sends `Service-Worker-Allowed` so it still covers the whole shop on Apache and LiteSpeed.
+- InstantNav no longer runs scripts from a fetched page: content that brings scripts loads normally. New content is inserted as imported nodes, never re-parsed markup.
+- Layouts read back from the browser's storage are rebuilt from bounded numbers before use.
+- Every navigation the scripts start goes through a same-site http(s) check.
+- InstantCart builds its button icon from elements and puts the button's own content back as nodes, with no `innerHTML`.
+
 ## AsyncCart 1.0.0
 
 The instant cart page as a module of its own: quantity changes sent once with the final quantity, removal with Undo (also after the shop has deleted the line), totals from lean endpoints. Stands aside when SpeedPack Core's InstantCart handles the cart page.

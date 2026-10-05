@@ -20,3 +20,12 @@
         Require all granted
     </Files>
 </IfModule>
+
+# The prefetch worker may claim the whole shop, not only its own folder.
+# Without mod_headers (or on nginx) the browser refuses the registration and
+# prefetching carries on with plain prefetch hints.
+<IfModule mod_headers.c>
+    <FilesMatch "^sw(\.min)?\.js$">
+        Header set Service-Worker-Allowed "/"
+    </FilesMatch>
+</IfModule>

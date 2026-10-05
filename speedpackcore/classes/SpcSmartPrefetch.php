@@ -195,13 +195,17 @@ class SpcSmartPrefetch extends SpcFeature
     }
 
     /**
-     * The worker is served through a controller rather than as a static file,
-     * so it can carry Service-Worker-Allowed and claim the whole shop instead
-     * of just its own folder. See controllers/front/sw.php.
+     * The worker is the module's own static file. A worker may only claim the
+     * folder it is served from, unless the server sends Service-Worker-Allowed;
+     * the module's .htaccess sends it on Apache and LiteSpeed. Where it is not
+     * sent (nginx without that header), registration is refused and
+     * prefetching carries on with plain prefetch hints.
      */
     protected function workerUrl()
     {
-        return $this->context->link->getModuleLink($this->name, 'sw', [], true);
+        $file = is_file($this->dir() . '/views/js/sw.min.js') ? 'sw.min.js' : 'sw.js';
+
+        return $this->module->getPathUri() . 'views/js/' . $file;
     }
 
     /** The shop root, so the worker covers every page. */
@@ -368,6 +372,7 @@ class SpcSmartPrefetch extends SpcFeature
             $this->l('Worker scope') => $this->workerScope(),
             $this->l('Worker file') => is_file($this->dir() . '/views/js/sw.js')
                 ? $this->l('present') : $this->l('MISSING'),
+            $this->l('Whole-shop worker') => $this->l('needs the Service-Worker-Allowed header, sent by the module .htaccess on Apache and LiteSpeed; without it, prefetching uses plain hints'),
             $this->l('Pages excluded') => implode(', ', $this->unsafePathPrefixes()),
         ];
 

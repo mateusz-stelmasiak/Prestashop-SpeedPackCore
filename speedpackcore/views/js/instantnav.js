@@ -357,11 +357,42 @@
 
         try {
             var raw = window.sessionStorage.getItem(key);
-            return raw ? JSON.parse(raw) : null;
+            return raw ? cleanLayout(JSON.parse(raw)) : null;
         } catch (e) {
             /* Private windows and blocked storage both land here. */
             return null;
         }
+    }
+
+    /**
+     * A layout read back from storage is rebuilt from numbers within limits and a shape from a
+     * fixed list, so nothing stored can reach the page as anything but a size.
+     */
+    function cleanLayout(raw) {
+        if (!raw || typeof raw !== 'object') { return null; }
+        var n = function (value, low, high, fallback) {
+            var v = Number(value);
+            return isFinite(v) ? Math.max(low, Math.min(high, v)) : fallback;
+        };
+        var shapes = { grid: 'grid', form: 'form', article: 'article' };
+        var layout = {
+            shape: shapes[raw.shape] || 'grid',
+            side: null,
+            columns: Math.round(n(raw.columns, 1, MAX_BLOCKS, 3)),
+            card: n(raw.card, 0, 900, 300),
+            crumb: n(raw.crumb, 0, 80, 0),
+            title: n(raw.title, 0, 80, 0)
+        };
+        if (raw.rows !== undefined) { layout.rows = Math.round(n(raw.rows, 0, 8, 5)); }
+        if (raw.side && typeof raw.side === 'object') {
+            layout.side = {
+                width: n(raw.side.width, 0, 100, 25),
+                height: n(raw.side.height, 0, 4000, 320),
+                gap: n(raw.side.gap, 0, 200, 30),
+                measured: raw.side.measured === true
+            };
+        }
+        return layout;
     }
 
     function keep(url, layout) {
@@ -924,19 +955,34 @@
      *  Putting the new page in
      * ---------------------------------------------------------------- */
 
-    /* Scripts moved in as markup never run. Re-creating them does. */
-    function runScripts(host) {
-        toArray(host.querySelectorAll('script')).forEach(function (old) {
-            var script = document.createElement('script');
+    /** The URL as an absolute same-site http(s) address, or null. */
+    function sameSite(url) {
+        var parsed;
+        try {
+            parsed = new URL(url, window.location.href);
+        } catch (e) {
+            return null;
+        }
+        if (parsed.origin !== ORIGIN || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) { return null; }
 
-            toArray(old.attributes).forEach(function (attr) {
-                script.setAttribute(attr.name, attr.value);
-            });
-            if (!old.src) {
-                script.appendChild(document.createTextNode(old.textContent));
-            }
+        return parsed.href;
+    }
 
-            old.parentNode.replaceChild(script, old);
+    /** The ordinary navigation, to this shop only. */
+    function leave(url) {
+        var target = sameSite(url);
+        if (target) { window.location.assign(target); }
+    }
+
+    /**
+     * Whether the new content brings scripts that would have to run. Those pages load normally:
+     * scripts from a fetched page are never executed here. Data blocks (JSON-LD, templates) are
+     * fine, they travel as inert markup.
+     */
+    function bringsScripts(doc) {
+        return toArray(doc.querySelectorAll(region + ' script')).some(function (s) {
+            var type = (s.getAttribute('type') || '').toLowerCase();
+            return !type || /(java|ecma)script|^module$/.test(type);
         });
     }
 
@@ -1028,8 +1074,13 @@
             if (doc.body.id) { document.body.id = doc.body.id; }
         }
 
-        host.innerHTML = incoming.innerHTML;
-        runScripts(host);
+        /* Nodes imported from the parsed page, never markup re-parsed as HTML. */
+        var content = document.createDocumentFragment();
+        toArray(incoming.childNodes).forEach(function (node) {
+            content.appendChild(document.importNode(node, true));
+        });
+        while (host.firstChild) { host.removeChild(host.firstChild); }
+        host.appendChild(content);
 
         try {
             if (window.prestashop && window.prestashop.urls) {
@@ -1064,8 +1115,9 @@
         /* Checked before the transition starts, not inside it. commit()
          * runs its callback a frame or more later, so a result read back
          * from in there would always be the value it started with. */
-        if (!doc.querySelector(region) || !document.querySelector(region)) {
-            window.location.href = url;
+        if (!doc.querySelector(region) || !document.querySelector(region) || bringsScripts(doc)) {
+            say('loading ' + url + ' normally (its content runs scripts, or has no region to swap)');
+            leave(url);
             return;
         }
 
@@ -1076,8 +1128,9 @@
             window.scrollTo(0, 0);
         }).then(settle);
 
-        if (push) {
-            window.history.pushState({ instantNav: true }, '', url);
+        var target = sameSite(url);
+        if (push && target) {
+            window.history.pushState({ instantNav: true }, '', target);
         }
         here = strip(window.location.href);
 
@@ -1105,7 +1158,7 @@
             if (!doc) {
                 hideSkeleton();
                 stopBar(true);
-                window.location.href = url;
+                leave(url);
                 return;
             }
 
@@ -1115,14 +1168,14 @@
             } catch (e) {
                 /* Half a swap is not a state to leave anyone in. */
                 say('swap failed, loading normally: ' + e.message);
-                window.location.href = url;
+                leave(url);
             }
         }).catch(function (error) {
             busy = false;
             hideSkeleton();
             stopBar(true);
             say('could not read ' + url + ' (' + error.message + '), loading normally');
-            window.location.href = url;
+            leave(url);
         });
     }
 

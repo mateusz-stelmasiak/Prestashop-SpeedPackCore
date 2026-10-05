@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.1.0.zip"><img alt="Download 1.1.0" src="https://img.shields.io/badge/download-speedpackcore--1.1.0.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.1.1.zip"><img alt="Download 1.1.0" src="https://img.shields.io/badge/download-speedpackcore--1.1.1.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 8.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%208.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-17201e">
+  <img alt="Version 1.1.1" src="https://img.shields.io/badge/version-1.1.1-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -110,7 +110,7 @@
 
 ## Installation
 
-1. Download **[speedpackcore-1.1.0.zip](dist/speedpackcore-1.1.0.zip)**.
+1. Download **[speedpackcore-1.1.1.zip](dist/speedpackcore-1.1.1.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: each part has a status panel, its settings and its switch. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -130,10 +130,10 @@
 | **Hooks** | `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews` |
 | **Overrides** | `Address::addressExists()`, installed and removed with the module. With Redis on, the module also writes `override/classes/cache/CacheRedis.php` |
 | **Files it changes** | With a data cache on, `app/config/parameters.php` (cache entries only; the original is kept as `parameters.php.speedpackcore.bak`) |
-| **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints), `sw` (serves the service worker) |
+| **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints) |
 | **Database** | No new tables; its configuration values are all removed on uninstall |
 | **Privacy** | No cookies and no personal data stored by the module. In the browser: two `sessionStorage` keys and a cache of shop pages kept 60 seconds, separate for each signed-in shopper |
-| **Requirements** | HTTPS for the service worker (without it, SmartPrefetch uses plain prefetch hints). The Redis, APCu or Memcached PHP extension for the data cache. Plain JavaScript, about 22 KB gzipped in total |
+| **Requirements** | HTTPS for the service worker, and the `Service-Worker-Allowed` header that the module's `.htaccess` sends on Apache and LiteSpeed (without them, SmartPrefetch uses plain prefetch hints). The Redis, APCu or Memcached PHP extension for the data cache. Plain JavaScript, about 22 KB gzipped in total |
 
 ## Source
 
@@ -152,7 +152,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **InstantCart :** ajout, suppression et changement de quantité immédiats ; 20 clics rapides = 1 requête.
 - **CartSpeed :** 73 requêtes identiques → 4 sur une page panier.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.1.0.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.1.1.zip`, puis Configurer.
 </details>
 
 <details>
@@ -166,7 +166,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **InstantCart:** dodawanie, usuwanie i zmiana ilości od razu; 20 szybkich kliknięć = 1 zapytanie.
 - **CartSpeed:** 73 identyczne zapytania → 4 na stronie koszyka.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.1.0.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.1.1.zip`, potem Konfiguruj.
 </details>
 
 ---
