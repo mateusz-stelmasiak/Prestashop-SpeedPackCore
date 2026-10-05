@@ -22,6 +22,18 @@ class SpcCartAnswer
         );
     }
 
+    /** How many of one cart line are in the cart: 0 when the line is not there. */
+    public static function lineQuantity(Cart $cart, $idProduct, $ipa, $idCustomization)
+    {
+        return (int) Db::getInstance()->getValue(
+            'SELECT SUM(quantity) FROM `' . _DB_PREFIX_ . 'cart_product`
+            WHERE id_cart = ' . (int) $cart->id . '
+            AND id_product = ' . (int) $idProduct . '
+            AND id_product_attribute = ' . (int) $ipa . '
+            AND id_customization = ' . (int) $idCustomization
+        );
+    }
+
     /** Whether the cart page shows prices with tax for this customer. */
     public static function withTax(Cart $cart)
     {

@@ -296,7 +296,12 @@ class SpcCacheBackend
             self::rebuildClassIndex();
         }
 
-        if (!class_exists('CacheRedis')) {
+        // loaded straight from the file for this request; the next requests find it through the
+        // class index PrestaShop rebuilds once the stale one is gone
+        if (!class_exists('CacheRedis', false)) {
+            require_once $target;
+        }
+        if (!class_exists('CacheRedis', false)) {
             return [$module->l('PrestaShop cannot load the Redis class. Clear the cache under Advanced Parameters > Performance and try again.', 'spccachebackend')];
         }
 
@@ -323,15 +328,16 @@ class SpcCacheBackend
         return true;
     }
 
-    /** Every environment's class index is stale once a class file comes or goes. */
+    /**
+     * Every environment's class index is stale once a class file comes or goes. Deleting it is
+     * enough: PrestaShop writes a fresh one on its next request.
+     */
     protected static function rebuildClassIndex()
     {
         foreach ((array) glob(_PS_ROOT_DIR_ . '/var/cache/*/class_index.php') as $index) {
             @unlink($index);
             self::invalidate($index);
         }
-
-        PrestaShopAutoload::getInstance()->generateIndex();
     }
 
     /* ------------------------------------------------------------------ *
@@ -448,7 +454,10 @@ class SpcCacheBackend
             return apcu_clear_cache();
         }
 
-        if ($backend === self::MEMCACHED && _PS_CACHE_ENABLED_ && _PS_CACHING_SYSTEM_ === 'CacheMemcached') {
+        // PrestaShop defines these while it starts, from parameters.php
+        $enabled = defined('_PS_CACHE_ENABLED_') && constant('_PS_CACHE_ENABLED_');
+        $system = defined('_PS_CACHING_SYSTEM_') ? (string) constant('_PS_CACHING_SYSTEM_') : '';
+        if ($backend === self::MEMCACHED && $enabled && $system === 'CacheMemcached') {
             return Cache::getInstance()->flush();
         }
 
@@ -496,12 +505,14 @@ class SpcCacheBackend
             if (!is_array($info)) {
                 return null;
             }
-            $limit = is_array($sma) ? (float) $sma['num_seg'] * (float) $sma['seg_size'] : 0;
+            // shared memory: segments x their size, and what is still free in them
+            $limit = (float) self::pick($sma, 'num_seg') * (float) self::pick($sma, 'seg_size');
+            $free = (float) self::pick($sma, 'avail_mem');
 
             return [
                 'hits' => (int) self::pick($info, 'num_hits'),
                 'misses' => (int) self::pick($info, 'num_misses'),
-                'used' => $limit && is_array($sma) ? $limit - (float) $sma['avail_mem'] : (float) self::pick($info, 'mem_size'),
+                'used' => $limit > 0 ? $limit - $free : (float) self::pick($info, 'mem_size'),
                 'limit' => $limit,
                 'scope' => 'apcu',
             ];

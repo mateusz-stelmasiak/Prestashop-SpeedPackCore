@@ -312,7 +312,8 @@ class SpcInstantNav extends SpcFeature
     protected function cmsPathPrefix()
     {
         try {
-            $pages = CMS::getCMSPages((int) $this->context->language->id, null, true);
+            // any active page will do: only its address is read, in the visitor's language below
+            $pages = CMS::getCMSPages(null, null, true);
         } catch (Exception $e) {
             return '';
         }

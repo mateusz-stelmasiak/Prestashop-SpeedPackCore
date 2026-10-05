@@ -66,11 +66,10 @@ class SpeedpackcoreQtyModuleFrontController extends ModuleFrontController
             return ['fallback' => true];
         }
 
-        $line = $cart->containsProduct($idProduct, $ipa, $idCustomization);
-        if (!$line) {
+        $current = SpcCartAnswer::lineQuantity($cart, $idProduct, $ipa, $idCustomization);
+        if (!$current) {
             return ['fallback' => true];
         }
-        $current = (int) $line['quantity'];
         $rulesBefore = count($cart->getCartRules());
 
         $error = '';
@@ -99,8 +98,7 @@ class SpeedpackcoreQtyModuleFrontController extends ModuleFrontController
             CartRule::autoAddToCart($this->context);
         }
 
-        $now = $cart->containsProduct($idProduct, $ipa, $idCustomization);
-        $quantity = $now ? (int) $now['quantity'] : 0;
+        $quantity = SpcCartAnswer::lineQuantity($cart, $idProduct, $ipa, $idCustomization);
         $count = SpcCartAnswer::count($cart);
 
         return [

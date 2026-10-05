@@ -67,13 +67,12 @@ class AsynccartQtyModuleFrontController extends ModuleFrontController
             return ['fallback' => true];
         }
 
-        $line = $cart->containsProduct($idProduct, $ipa, $idCustomization);
-        if (!$line && !(Tools::getValue('restore') && !$idCustomization)) {
-            return ['fallback' => true];
-        }
+        $current = AsyncCartAnswer::lineQuantity($cart, $idProduct, $ipa, $idCustomization);
         // Undo after a removal: the line is gone, so it is added back from zero
         // (a customised line cannot be rebuilt from here, so Undo is offered only for plain lines)
-        $current = $line ? (int) $line['quantity'] : 0;
+        if (!$current && !(Tools::getValue('restore') && !$idCustomization)) {
+            return ['fallback' => true];
+        }
         $rulesBefore = count($cart->getCartRules());
 
         $error = '';
@@ -102,8 +101,7 @@ class AsynccartQtyModuleFrontController extends ModuleFrontController
             CartRule::autoAddToCart($this->context);
         }
 
-        $now = $cart->containsProduct($idProduct, $ipa, $idCustomization);
-        $quantity = $now ? (int) $now['quantity'] : 0;
+        $quantity = AsyncCartAnswer::lineQuantity($cart, $idProduct, $ipa, $idCustomization);
         $count = AsyncCartAnswer::count($cart);
 
         return [
