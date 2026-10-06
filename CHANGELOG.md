@@ -1,5 +1,11 @@
 # Changelog
 
+## SpeedPack Core 1.2.1
+
+Security fix from a code scan of InstantNav's content swap:
+- A fetched page whose content carries anything active (an event-handler attribute such as `onerror`, a `javascript:` address, an iframe, object or embed, a `<meta http-equiv>`, SVG `<set>`/`<animate>`, or a script) now loads normally instead of being swapped in. Before, only scripts were caught.
+- What is swapped in is an inert copy: active elements are left out and active attributes removed, as a second lock behind the check above. Microdata (`<meta itemprop>`) and JSON-LD still travel with the content.
+
 ## SpeedPack Core 1.2.0
 
 - **Speed audit.** One button on the settings page (offered after install and after upgrading) measures each part without SpeedPack and with it, on the shop's own server, in about a minute: server answer time of five pages (data cache), click to page shown through the menu with no speed-ups, SmartPrefetch, InstantNav and everything (in a shop window it opens), adding to the cart (cart page against the lean endpoint) and the cart's address lookups (CartSpeed). Animated icons and before/after bars, and a chart of the last 12 audits. "Without" applies only to the audit's own requests, through a signed cookie valid for 15 minutes; with Redis, the cache class steps aside for them too.

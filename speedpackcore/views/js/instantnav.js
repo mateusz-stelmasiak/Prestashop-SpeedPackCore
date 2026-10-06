@@ -974,16 +974,69 @@
         if (target) { window.location.assign(target); }
     }
 
+    /** A script the browser would run, as opposed to a data block (JSON-LD, a template). */
+    function runnable(script) {
+        var type = (script.getAttribute('type') || '').toLowerCase();
+        return !type || /(java|ecma)script|^module$/.test(type);
+    }
+
+    /* Elements that run, load or redirect on their own once in the page (a <meta> only with
+     * http-equiv: PrestaShop's listings are full of harmless <meta itemprop> microdata). SVG
+     * <set> and <animate> can rewrite a link's address after insertion. */
+    var ACTIVE = /^(iframe|frame|frameset|object|embed|applet|base|portal|fencedframe|set|animate)$/i;
+    /* Attributes that hold an address the browser may follow or load. */
+    var URL_ATTR = /^(href|src|action|formaction|data|poster|background|xlink:href|ping)$/i;
+    var BAD_URL = /^(javascript:|vbscript:|data:text\/html|data:image\/svg)/i;
+
+    /** An attribute that would run code: an event handler, srcdoc, or a script address. */
+    function activeAttribute(attr) {
+        var name = attr.name.toLowerCase();
+        if (name.indexOf('on') === 0 || name === 'srcdoc') { return true; }
+        /* browsers ignore control characters and spaces in a scheme ("java\tscript:") */
+        return URL_ATTR.test(name) && BAD_URL.test(String(attr.value).replace(/[\u0000- ]/g, ''));
+    }
+
+    /** An element that is active in itself, whatever its attributes. */
+    function activeTag(el) {
+        var tag = el.tagName.toLowerCase();
+        if (tag === 'script') { return runnable(el); }
+        if (tag === 'meta') { return el.hasAttribute('http-equiv'); }
+        return ACTIVE.test(tag);
+    }
+
+    function activeElement(el) {
+        return activeTag(el) || toArray(el.attributes).some(activeAttribute);
+    }
+
     /**
-     * Whether the new content brings scripts that would have to run. Those pages load normally:
-     * scripts from a fetched page are never executed here. Data blocks (JSON-LD, templates) are
-     * fine, they travel as inert markup.
+     * Whether the new content brings anything that would run: scripts, event-handler attributes,
+     * javascript: addresses, frames and plug-ins. Those pages load normally; nothing active from
+     * a fetched page is ever put into this one. Data blocks (JSON-LD, templates) are fine, they
+     * travel as inert markup.
      */
     function bringsScripts(doc) {
-        return toArray(doc.querySelectorAll(region + ' script')).some(function (s) {
-            var type = (s.getAttribute('type') || '').toLowerCase();
-            return !type || /(java|ecma)script|^module$/.test(type);
+        return toArray(doc.querySelectorAll(region + ', ' + region + ' *')).some(activeElement);
+    }
+
+    /**
+     * A copy of a node from the fetched page that cannot run anything: active elements are left
+     * out and active attributes dropped. bringsScripts() already sends such pages to a normal
+     * load; this is the second lock, so even content that slipped past it is inserted inert.
+     */
+    function inertCopy(node) {
+        var copy = document.importNode(node, true);
+        if (copy.nodeType === 3 || copy.nodeType === 8) { return copy; }   // text, comments
+        if (copy.nodeType !== 1 || activeTag(copy)) { return null; }
+        [copy].concat(toArray(copy.querySelectorAll('*'))).forEach(function (el) {
+            if (el !== copy && activeTag(el)) {
+                if (el.parentNode) { el.parentNode.removeChild(el); }
+                return;
+            }
+            toArray(el.attributes).forEach(function (attr) {
+                if (activeAttribute(attr)) { el.removeAttribute(attr.name); }
+            });
         });
+        return copy;
     }
 
     /**
@@ -1074,10 +1127,11 @@
             if (doc.body.id) { document.body.id = doc.body.id; }
         }
 
-        /* Nodes imported from the parsed page, never markup re-parsed as HTML. */
+        /* Inert copies of the parsed page's nodes, never markup re-parsed as HTML. */
         var content = document.createDocumentFragment();
         toArray(incoming.childNodes).forEach(function (node) {
-            content.appendChild(document.importNode(node, true));
+            var safe = inertCopy(node);
+            if (safe) { content.appendChild(safe); }
         });
         while (host.firstChild) { host.removeChild(host.firstChild); }
         host.appendChild(content);
