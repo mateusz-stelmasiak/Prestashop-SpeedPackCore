@@ -43,6 +43,7 @@ export SPC_TMP="$WORK"
 export SPC_BH_ADMIN_VARS="$WORK/bh-vars.json" SPC_BH_REPORT="$WORK/bh-report.json" SPC_BH_MESSAGES="$WORK/bh-messages.json"
 step "php: module (install, settings)" php php/unit.php
 step "php: AsyncCart" php php/asynccart.php
+step "php: Optimize page steps" php php/html.php
 if php -r 'exit(class_exists("Redis") ? 0 : 1);' && (exec 3<>/dev/tcp/127.0.0.1/"${REDIS_PORT:-6390}") 2>/dev/null; then
   step "php: data cache (Redis)" php php/cache.php
 else skipped "php: data cache (Redis)" "no Redis on ${REDIS_PORT:-6390} or no phpredis"; fi
@@ -60,6 +61,7 @@ if php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' && php -r 'try { new PD
   step "php: Behaviour (MariaDB)" php php/behaviour.php
   export SPC_REORDER_HTML="$WORK/reorder.html" SPC_CHECKOUT_JSON="$WORK/checkout.json" SPC_CHECKOUT_CART_JSON="$WORK/checkout-cart.json"
   step "php: Reorder (MariaDB)" php php/reorder.php
+  step "php: page cache, pictures, headers (MariaDB)" php php/pagecache.php
   DB=1
 else skipped "php: health check, Behaviour (MariaDB)" "no database, see README"; fi
 
@@ -83,6 +85,7 @@ if command -v node >/dev/null && node -e "require('$PW')" 2>/dev/null && [ -f "$
   if [ -f "${SPC_JOURNEY_HTML:-}" ]; then
     J=$(port); JOURNEY_HTML="$SPC_JOURNEY_HTML" JOURNEY_CART_HTML="$SPC_JOURNEY_CART_HTML" serve "$J" python3 browser/shop.py "$J" "$MOD" "$WORK/admin.html" && step "browser: path on orders and carts" node browser/journey.e2e.js "$J"
   fi
+  mkdir -p "$WORK/opt" && php browser/render-opt.php "$WORK/opt" && step "browser: Optimize (critical CSS, deferred scripts)" node browser/optimize.e2e.js "$WORK/opt" "$MOD"
   if [ $DB = 1 ] && [ -f "$SPC_BH_MESSAGES" ]; then step "php: Behaviour, browser messages stored" php php/behaviour-replay.php "$SPC_BH_MESSAGES"; fi
 else skipped "browser tests" "no node/playwright (set SPC_PLAYWRIGHT) or no audit vars"; fi
 

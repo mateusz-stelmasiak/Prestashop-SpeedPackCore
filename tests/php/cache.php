@@ -49,7 +49,7 @@ $m = new SpeedPackCore();
 ok($m->version === spc_version() && $m->install(), 'install ' . spc_version() . ' (the version of config.xml)');
 ok(Configuration::get('SPC_CACHE_REDIS_PREFIX') && Configuration::get('SPC_IC_QTY') == 1, 'cache defaults and quantity switch written');
 $page = $m->getContent();
-echo '    ', preg_replace('/<status .*?>/', '<status>', $page), "\n"; ok(substr_count($page, '<form:') === 9 && strpos($page, '<actions') !== false, 'settings page: 9 forms incl. data cache, PrestaShop settings, Reorder, Behaviour and sharing, plus actions');
+echo '    ', preg_replace('/<status .*?>/', '<status>', $page), "\n"; ok(substr_count($page, '<form:') === 11 && strpos($page, '<form:submitSpcPageCache>') !== false && strpos($page, '<form:submitSpcOptimize>') !== false && strpos($page, '<actions') !== false, 'settings page: 11 forms incl. data cache, PrestaShop settings, Page cache, Optimize, Reorder, Behaviour and sharing, plus actions');
 ok(strpos($page, '"Data cache in use":"Off"') !== false, 'status says the data cache is off');
 ok(in_array('/modules/speedpackcore/views/js/admin.js', Context::getContext()->controller->js, true), 'warm-up script added to the page');
 

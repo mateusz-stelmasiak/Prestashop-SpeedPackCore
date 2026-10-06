@@ -36,6 +36,10 @@ require_once dirname(__FILE__) . '/classes/SpcWeight.php';
 require_once dirname(__FILE__) . '/classes/SpcDiagnostics.php';
 require_once dirname(__FILE__) . '/classes/SpcBehaviour.php';
 require_once dirname(__FILE__) . '/classes/SpcReorder.php';
+require_once dirname(__FILE__) . '/classes/SpcHtml.php';
+require_once dirname(__FILE__) . '/classes/SpcImages.php';
+require_once dirname(__FILE__) . '/classes/SpcPageCache.php';
+require_once dirname(__FILE__) . '/classes/SpcOptimize.php';
 
 class SpeedPackCore extends Module
 {
@@ -59,6 +63,12 @@ class SpeedPackCore extends Module
 
     /** @var SpcCache */
     private $cache;
+
+    /** @var SpcPageCache */
+    private $pageCache;
+
+    /** @var SpcOptimize */
+    private $optimize;
 
     /** @var SpcSmartPrefetch */
     private $smartPrefetch;
@@ -85,7 +95,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.6.3';
+        $this->version = '1.7.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -95,10 +105,12 @@ class SpeedPackCore extends Module
         parent::__construct();
 
         $this->displayName = $this->l('SpeedPack Core');
-        $this->description = $this->l('Speed-ups in one module: Redis, APCu or Memcached data cache, pages fetched before the click, menu clicks without a reload, instant cart changes and a lighter cart page.');
+        $this->description = $this->l('Speed-ups in one module: a page cache, WebP and AVIF pictures, lazy loading, critical CSS, Redis, APCu or Memcached data cache, pages fetched before the click, menu clicks without a reload, instant cart changes and a lighter cart page.');
         $this->confirmUninstall = $this->l('The shop goes back to normal page loads and the standard add to cart. Remove SpeedPack Core?');
 
         $this->cache = new SpcCache($this, $this->context, 'Cache');
+        $this->pageCache = new SpcPageCache($this, $this->context, $this->l('Page cache'));
+        $this->optimize = new SpcOptimize($this, $this->context, $this->l('Optimize'));
         $this->smartPrefetch = new SpcSmartPrefetch($this, $this->context, 'SmartPrefetch');
         $this->instantNav = new SpcInstantNav($this, $this->context, 'InstantNav');
         $this->instantCart = new SpcInstantCart($this, $this->context, 'InstantCart');
@@ -112,6 +124,8 @@ class SpeedPackCore extends Module
     {
         return [
             'cache' => $this->cache,
+            'pagecache' => $this->pageCache,
+            'optimize' => $this->optimize,
             'smartprefetch' => $this->smartPrefetch,
             'instantnav' => $this->instantNav,
             'instantcart' => $this->instantCart,
@@ -167,7 +181,9 @@ class SpeedPackCore extends Module
             && $this->registerHook('displayFooter')
             && $this->registerHook('displayLlmsTxt')
             && $this->reorder->registerHooks()
-            && $this->behaviour->registerHooks();
+            && $this->behaviour->registerHooks()
+            && $this->pageCache->registerHooks()
+            && $this->optimize->registerHooks();
     }
 
     /* ------------------------------------------------------------------ *
@@ -185,6 +201,169 @@ class SpeedPackCore extends Module
             return;
         }
         SpcAudit::apply();
+        // a page kept for visitors who are not signed in: sent now, before PrestaShop builds it
+        if (!isset($params['controller_type']) || (int) $params['controller_type'] === Dispatcher::FC_FRONT) {
+            SpcPageCache::serve((string) Dispatcher::getInstance()->getController(), $this->context);
+        }
+    }
+
+    /**
+     * The page PrestaShop has just built, on its way out: Optimize's changes, then kept by the
+     * page cache (so a page served from it has them already).
+     */
+    public function hookActionOutputHTMLBefore($params)
+    {
+        if (!isset($params['html']) || !is_string($params['html'])) {
+            return;
+        }
+        $html = &$params['html'];
+        if (!SpcAudit::off('optimize')) {
+            $html = $this->optimize->transform($html, $this->pageName());
+        }
+        SpcPageCache::store((string) Dispatcher::getInstance()->getController(), $html, $this->context);
+    }
+
+    /** The page's name as Optimize knows it: index, product... or module-<name> for a module's page. */
+    private function pageName()
+    {
+        $c = $this->context->controller;
+        if ($c instanceof ModuleFrontController && $c->module) {
+            return 'module-' . $c->module->name;
+        }
+
+        return isset($c->php_self) && $c->php_self ? (string) $c->php_self : (string) Dispatcher::getInstance()->getController();
+    }
+
+    /* What makes kept pages stale (only while the page cache is on: switching it on empties it) */
+
+    /** A product, its stock or its price changed: its page, its categories, the home page and the listings. */
+    private function productChanged($idProduct)
+    {
+        if (!SpcPageCache::enabled()) {
+            return;
+        }
+        if ((int) $idProduct > 0) {
+            SpcPageCache::productChanged((int) $idProduct);
+        } else {
+            // a price for every product
+            SpcPageCache::flush();
+        }
+    }
+
+    /** Anything that shows on many pages (a category, a CMS page, a brand, the theme, a module). */
+    private function siteChanged()
+    {
+        if (SpcPageCache::enabled()) {
+            SpcPageCache::flush();
+        }
+    }
+
+    public function hookActionObjectProductAddAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id) ? $params['object']->id : 0);
+    }
+
+    public function hookActionObjectProductUpdateAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id) ? $params['object']->id : 0);
+    }
+
+    public function hookActionObjectProductDeleteAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id) ? $params['object']->id : 0);
+    }
+
+    public function hookActionUpdateQuantity($params)
+    {
+        if (!empty($params['id_product'])) {
+            $this->productChanged($params['id_product']);
+        }
+    }
+
+    public function hookActionObjectSpecificPriceAddAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id_product) ? $params['object']->id_product : 0);
+    }
+
+    public function hookActionObjectSpecificPriceUpdateAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id_product) ? $params['object']->id_product : 0);
+    }
+
+    public function hookActionObjectSpecificPriceDeleteAfter($params)
+    {
+        $this->productChanged(isset($params['object']->id_product) ? $params['object']->id_product : 0);
+    }
+
+    public function hookActionObjectCategoryAddAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectCategoryUpdateAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectCategoryDeleteAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectCmsAddAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectCmsUpdateAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectCmsDeleteAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectManufacturerUpdateAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectSupplierUpdateAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionObjectSpecificPriceRuleUpdateAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionClearCache($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionClearCompileCache($params)
+    {
+        $this->siteChanged();
+    }
+
+    public function hookActionModuleInstallAfter($params)
+    {
+        $this->siteChanged();
+    }
+
+    /** New product pictures (after PrestaShop made their sizes): their WebP and AVIF copies. */
+    public function hookActionWatermark($params)
+    {
+        $this->optimize->hookActionWatermark($params);
+    }
+
+    public function hookActionObjectImageDeleteAfter($params)
+    {
+        $this->optimize->hookActionObjectImageDeleteAfter($params);
     }
 
     public function hookActionFrontControllerSetMedia($params)
@@ -263,6 +442,9 @@ class SpeedPackCore extends Module
         }
         if (Tools::getValue('spc_ajax') === 'behaviour') {
             $this->behaviour->ajax();
+        }
+        if (Tools::getValue('spc_ajax') === 'optimize') {
+            $this->optimize->ajax((string) Tools::getValue('op'));
         }
         if (Tools::getValue('spc_ajax') === 'audit') {
             $this->ajaxAudit((string) Tools::getValue('step'));
@@ -375,6 +557,8 @@ class SpeedPackCore extends Module
     {
         $forms = [
             'cache' => ['submitSpcCache', 'submitSpcBuiltin', 'submitSpcFlush', 'submitSpcOpcache'],
+            'pagecache' => ['submitSpcPageCache', 'submitSpcPageCacheFlush'],
+            'optimize' => ['submitSpcOptimize', 'submitSpcCriticalClear'],
             'smartprefetch' => ['submitsmartprefetch'],
             'instantnav' => ['submitinstantnav'],
             'instantcart' => ['submitInstantCart'],
@@ -398,12 +582,15 @@ class SpeedPackCore extends Module
     /** The one-click switches of the overview. */
     private function toggle($part)
     {
-        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED, 'behaviour' => SpcBehaviour::K_ENABLED, 'reorder' => SpcReorder::K_ENABLED];
+        $keys = ['pagecache' => SpcPageCache::K_ENABLED, 'optimize' => SpcOptimize::K_ENABLED, 'smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED, 'behaviour' => SpcBehaviour::K_ENABLED, 'reorder' => SpcReorder::K_ENABLED];
         if (!isset($keys[$part])) {
             return '';
         }
         $now = $this->summaries()[$part]['on'];
         Configuration::updateValue($keys[$part], $now ? 0 : 1);
+        if (in_array($part, ['pagecache', 'optimize'], true)) {
+            SpcPageCache::flush();
+        }
 
         return $this->displayConfirmation($now ? $this->l('Switched off.') : $this->l('Switched on.'));
     }
@@ -427,9 +614,11 @@ class SpeedPackCore extends Module
     {
         $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
         $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
-        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
+        $names = ['cache' => 'Cache', 'pagecache' => $this->pageCache->displayName, 'optimize' => $this->optimize->displayName, 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
         $what = [
             'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
+            'pagecache' => $this->l('Whole pages ready for visitors.'),
+            'optimize' => $this->l('Smaller pictures, lazy loading, critical CSS.'),
             'smartprefetch' => $this->l('The next page before the click.'),
             'instantnav' => $this->l('Menu clicks without a reload.'),
             'instantcart' => $this->l('The cart without waiting.'),
@@ -444,7 +633,7 @@ class SpeedPackCore extends Module
                 'id' => $id,
                 'name' => $names[$id],
                 'what' => $what[$id],
-                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'reorder', 'behaviour'], true),
+                'switch' => in_array($id, ['pagecache', 'optimize', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'reorder', 'behaviour'], true),
                 'level' => isset($sum['level']) ? $sum['level'] : ($sum['on'] ? 'ok' : 'off'),
             ];
         }

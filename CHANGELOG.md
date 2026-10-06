@@ -1,5 +1,13 @@
 # Changelog
 
+## SpeedPack Core 1.7.0
+
+Two new parts, each off until switched on.
+
+- **Page cache:** catalogue pages kept ready for visitors who are not signed in and have nothing in their cart, sent at the dispatcher before PrestaShop builds anything. The key holds the shop, address, language, currency, country, device and picture format, not campaign tags. Product, stock and price changes clear the product's page, its categories, its brand, the home page and the listings; category, CMS, brand, supplier, price rule changes, "Clear cache" and module installs clear everything. Gzipped files with an index table, an `X-SpeedPack-Cache` header on every answer, hits and pages kept on the settings page. The speed audit's requests never use it.
+- **Optimize:** WebP and AVIF copies of the shop's pictures (made in steps from the settings page, at once for new product pictures, kept only when smaller), native lazy loading below the first screen with the main product picture first, critical CSS made in the admin's browser from real shop pages at computer and phone width, scripts at the end of the page deferred while keeping their order, minified HTML, and a `.htaccess` block for browser caching and gzip/Brotli (the nginx lines shown for nginx).
+- Tests: the page cache through a real web server (built, kept, sent ready and gzipped, bypassed for carts and the audit), picture copies with GD, `.htaccess` written and restored, the critical CSS generator and the deferred scripts' order in a real Chromium.
+
 ## SpeedPack Core 1.6.3
 
 - **A finished checkout step opens from a click anywhere on it**, not only on "edit": the title, the summary under it, an empty corner. It unfolds smoothly and comes into view; the whole step shows the hand and lights up on hover; the keyboard reaches it too (Tab, then Enter). Works with PrestaShop's own handler and without it. Part of the checkout summaries, so on by default.

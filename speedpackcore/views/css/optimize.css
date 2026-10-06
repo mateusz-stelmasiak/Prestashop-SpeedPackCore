@@ -1,0 +1,23 @@
+/**
+ * SpeedPack Core - Page cache and Optimize settings.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-opt-tiles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.spc-opt-tile { flex: 1 1 160px; padding: 14px 16px; border: 1px solid #e3e8ea; border-radius: 6px; background: #fff; }
+.spc-opt-tile b { display: block; font-size: 22px; line-height: 1.2; color: #143848; }
+.spc-opt-tile span { font-size: 12px; color: #6c868e; }
+.spc-opt h3 + p { margin-top: 0; }
+.spc-opt-ok { color: #2e8b57; font-weight: 600; }
+.spc-opt-no { color: #c0392b; }
+.spc-opt-progress { margin-left: 10px; color: #6c868e; }
+.spc-opt-bar { height: 6px; margin: 4px 0 18px; border-radius: 3px; background: #eef2f3; overflow: hidden; }
+.spc-opt-bar span { display: block; width: 0; height: 100%; background: #25b9d7; transition: width .3s ease; }
+.spc-opt-crit { max-width: 560px; }
+.spc-opt-actions { margin: 6px 0 18px; }
+.spc-opt-pre { max-height: 260px; overflow: auto; font-size: 12px; white-space: pre; }
+/* the shop pages critical CSS is read from: laid out at full size, out of sight */
+.spc-opt-frame { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; }
+.spc-opt-frame iframe { border: 0; }
