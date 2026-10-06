@@ -29,7 +29,7 @@
  * comes from PHP, built from PrestaShop's own link builder.
  */
 
-var VERSION = 'v1';
+var VERSION = 'v2';
 var DOC_PREFIX = 'sp-docs-' + VERSION + '-';
 var ASSETS = 'sp-assets-' + VERSION;
 
@@ -73,6 +73,10 @@ var ASSET_DEST = ['image', 'style', 'script', 'font'];
  * a restarted worker would wake up with no idea which pages were forbidden.
  */
 var configPromise = null;
+
+/* Downloads on their way, by URL. A click that arrives while its page is
+ * still downloading waits for that download instead of starting another. */
+var inflight = {};
 
 var EMPTY_CONFIG = { denyPrefixes: [], identity: 'guest' };
 
@@ -232,9 +236,13 @@ function download(url, reason) {
                 return null;
             }
 
+            if (inflight[url]) {
+                return inflight[url];
+            }
+
             /* same-origin, credentials included so the response matches what
              * a real navigation would receive */
-            return fetch(url, { credentials: 'same-origin' }).then(function (response) {
+            var job = fetch(url, { credentials: 'same-origin' }).then(function (response) {
                 if (!storable(response)) {
                     return tell({ type: 'skipped', url: url, status: response.status });
                 }
@@ -247,6 +255,10 @@ function download(url, reason) {
             }).catch(function () {
                 return tell({ type: 'failed', url: url, reason: reason });
             });
+            inflight[url] = job;
+            job.then(function () { delete inflight[url]; }, function () { delete inflight[url]; });
+
+            return job;
         });
         });
     });
@@ -320,22 +332,22 @@ function assetFirst(request) {
 }
 
 function documentSwr(request, config) {
-    return caches.open(docsCache(config)).then(function (cache) {
-        return cache.match(request.url).then(function (hit) {
-            var network = fetch(request).then(function (response) {
-                if (storable(response)) {
-                    put(cache, request.url, response);
-                }
-                return response;
-            });
+    /* the page may be downloading right now: wait for it rather than ask twice */
+    var pending = inflight[request.url] || Promise.resolve();
 
+    return pending.then(function () {
+        return caches.open(docsCache(config));
+    }).then(function (cache) {
+        return cache.match(request.url).then(function (hit) {
             if (hit && fresh(hit)) {
+                /* a stored page lives for DOC_TTL only, so it is served as it
+                 * is: fetching it again in the background would double the
+                 * shop's work for every click */
                 tell({ type: 'served', url: request.url });
-                network.catch(function () { /* refresh is best effort */ });
                 return hit;
             }
 
-            return network.catch(function () {
+            return fetch(request).catch(function () {
                 return hit || Response.error();
             });
         });

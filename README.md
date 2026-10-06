@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.1.1.zip"><img alt="Download 1.1.0" src="https://img.shields.io/badge/download-speedpackcore--1.1.1.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.2.0.zip"><img alt="Download 1.2.0" src="https://img.shields.io/badge/download-speedpackcore--1.2.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
-  <img alt="PrestaShop 1.7.6 – 8.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%208.x-df0067">
+  <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.1.1" src="https://img.shields.io/badge/version-1.1.1-17201e">
+  <img alt="Version 1.2.0" src="https://img.shields.io/badge/version-1.2.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -21,18 +21,19 @@
 | Part | What it removes | The number |
 |---|---|---|
 | **Cache** | Waiting for the database | Query results kept in **Redis, APCu or Memcached** |
-| **SmartPrefetch** | Waiting for the next page | Starts downloading **65 ms** after a hover |
+| **SmartPrefetch** | Waiting for the next page | Starts downloading **65 ms** after a hover; on a longer hover Chrome builds the whole page |
 | **InstantNav** | The white flash between pages | **0** white screens; the header never reloads |
 | **InstantCart** | Waiting after "Add to cart" and +/− | **20 clicks → 1 request** (4.75 s → 1.73 s on a slow server) |
 | **CartSpeed** | Repeated queries on the cart page | **73 → 4** address lookups per cart page |
 
-<sub>InstantCart and CartSpeed figures were measured on the Alhambra shop. SmartPrefetch and InstantNav figures are the modules' default settings.</sub>
+<sub>InstantCart and CartSpeed figures were measured on the Alhambra shop. SmartPrefetch and InstantNav figures are the modules' default settings. The built-in **speed audit** measures all five on your own shop.</sub>
 
 ## Why merchants use it
 
 - **Shoppers browse further** when every page answers at once: no white flash between pages, no waiting after "Add to cart".
 - **Less work for your server:** database results come from memory, quick cart clicks are merged into one request, and the cart page skips dozens of identical queries.
 - **Install and go:** sensible defaults, one settings page, a separate switch for each part, no theme files to edit.
+- **See the difference on your own shop:** the speed audit measures every part with SpeedPack and without it, in about a minute.
 - **Safe by design:** a cache is switched on only after it passes a live test, pages that change something (cart, checkout, account, log out) are never fetched ahead, and any error falls back to the normal page load.
 
 ## What shoppers notice
@@ -42,6 +43,20 @@
 - "Add to cart", removing a line and changing a quantity all respond instantly, even on a slow phone connection.
 
 ## Features
+
+### Speed audit · *new in 1.2*
+
+<img src="media/speed-audit.png" alt="The speed audit: each part measured without SpeedPack and with it" width="100%">
+
+<sub>The audit screen, here run against the module's test shop.</sub>
+
+- One button on the settings page, offered right after install: **each part measured without SpeedPack and with it**, on your shop and your server, in about a minute
+- **Data cache:** server answer time of five of your pages (home, two busiest categories, two best sellers)
+- **SmartPrefetch and InstantNav:** a shop window opens and clicks through your menu, timing click to page shown with no speed-ups, with each part and with everything
+- **InstantCart:** adding to the cart through PrestaShop's cart page against the lean endpoint
+- **CartSpeed:** database queries for the address lookups of a cart page
+- Animated results with before/after bars, and a chart of earlier audits to see the effect of later changes
+- Customers are not affected: "without" is a signed cookie, valid 15 minutes, that only the audit's own requests carry
 
 ### Cache – database results from memory · *new in 1.1*
 
@@ -58,10 +73,11 @@
 <img src="media/scene-smartprefetch.png" alt="SmartPrefetch: the next page is fetched on hover" width="100%">
 
 - Starts downloading a page 65 ms after the pointer rests on its link, or a finger touches it
-- At most 12 fetches per page, and up to 3 main-menu or slider links warmed up on the first page of a visit
+- **New in 1.2:** in Chrome and Edge it uses the browser's own Speculation Rules: the page is prefetched on hover and, when the pointer stays 250 ms, built in full in the background (prerender), so the click shows it at once. At most 4 prerenders per visit, never on touch
+- Other browsers keep the service-worker cache (60 s, separate for signed-in and signed-out shoppers); a click arriving while a fetch is still running now waits for it instead of downloading the page twice
+- At most 12 fetches per page, and up to 3 main-menu or slider links warmed up on the first page of a visit; links InstantNav swaps in are left to InstantNav
 - Never fetches cart, checkout, account or log-out pages, or links that add, delete or carry a token
 - Stands down when the visitor has Data Saver on or a 2G connection
-- Fetched pages are kept 60 s in a service-worker cache, separately for signed-in and signed-out shoppers
 
 ### InstantNav – menu clicks without a reload
 
@@ -110,11 +126,12 @@
 
 ## Installation
 
-1. Download **[speedpackcore-1.1.1.zip](dist/speedpackcore-1.1.1.zip)**.
+1. Download **[speedpackcore-1.2.0.zip](dist/speedpackcore-1.2.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: each part has a status panel, its settings and its switch. To use Redis, enter its host and password under **Cache** and press **Save and test**.
-5. Open your shop and check: hover a menu link and click it (no white flash), add a product from a category page (the count goes up at once), change a quantity in the cart.
+5. Press **Measure my shop** at the top of the settings page: the speed audit shows what each part does for your shop in about a minute (allow the pop-up window it opens).
+6. Open your shop and check: hover a menu link and click it (no white flash), add a product from a category page (the count goes up at once), change a quantity in the cart.
 
 > [!NOTE]
 > - If you had the separate SmartPrefetch, InstantNav, InstantCart or CartSpeed modules, uninstall them first.
@@ -126,14 +143,14 @@
 
 | | |
 |---|---|
-| **Compatibility** | PrestaShop 1.7.6.0 to 8.x, PHP 7.1 or newer, multistore |
+| **Compatibility** | PrestaShop 1.7.6.0 to 9.x, PHP 7.1 or newer, multistore |
 | **Hooks** | `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews` |
 | **Overrides** | `Address::addressExists()`, installed and removed with the module. With Redis on, the module also writes `override/classes/cache/CacheRedis.php` |
 | **Files it changes** | With a data cache on, `app/config/parameters.php` (cache entries only; the original is kept as `parameters.php.speedpackcore.bak`) |
 | **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints) |
 | **Database** | No new tables; its configuration values are all removed on uninstall |
-| **Privacy** | No cookies and no personal data stored by the module. In the browser: two `sessionStorage` keys and a cache of shop pages kept 60 seconds, separate for each signed-in shopper |
-| **Requirements** | HTTPS for the service worker, and the `Service-Worker-Allowed` header that the module's `.htaccess` sends on Apache and LiteSpeed (without them, SmartPrefetch uses plain prefetch hints). The Redis, APCu or Memcached PHP extension for the data cache. Plain JavaScript, about 22 KB gzipped in total |
+| **Privacy** | No personal data stored by the module, and no cookies for shoppers. The speed audit sets one signed `spc_audit` cookie in the admin's own browser for the duration of the audit. In the browser: two `sessionStorage` keys and a cache of shop pages kept 60 seconds, separate for each signed-in shopper |
+| **Requirements** | Chrome and Edge need nothing more. Other browsers use the service worker: HTTPS, and the `Service-Worker-Allowed` header that the module's `.htaccess` sends on Apache and LiteSpeed. The speed audit needs cURL on the server and the shop on the same address as the back office for its click test. The Redis, APCu or Memcached PHP extension for the data cache. Plain JavaScript, about 22 KB gzipped in total |
 
 ## Source
 
@@ -147,12 +164,13 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 **Votre boutique devient instantanée.** Les résultats de la base de données viennent de la mémoire, la page suivante se charge avant le clic, le menu change de page sans rechargement, le panier réagit tout de suite et la page panier fait 95 % de requêtes répétées en moins.
 
 - **Cache :** Redis, APCu ou Memcached, activé seulement après un test réel (connexion, mot de passe, écriture et lecture) ; panneau OPcache, réglages de performance de PrestaShop, vidage et préchauffage du cache.
-- **SmartPrefetch :** télécharge la page 65 ms après le survol du lien ; ne précharge jamais le panier, la commande, le compte ni la déconnexion.
+- **SmartPrefetch :** télécharge la page 65 ms après le survol du lien, et dans Chrome et Edge la construit entièrement après 250 ms (prerender) ; ne précharge jamais le panier, la commande, le compte ni la déconnexion.
 - **InstantNav :** le menu remplace seulement le contenu ; l'en-tête, le menu et le panier restent en place, sans écran blanc.
 - **InstantCart :** ajout, suppression et changement de quantité immédiats ; 20 clics rapides = 1 requête.
 - **CartSpeed :** 73 requêtes identiques → 4 sur une page panier.
+- **Audit de vitesse :** chaque partie mesurée avec et sans SpeedPack sur votre boutique, en une minute environ.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.1.1.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.2.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -161,12 +179,13 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 **Sklep działa od ręki.** Wyniki z bazy danych przychodzą z pamięci, następna strona ładuje się przed kliknięciem, menu przełącza strony bez przeładowania, koszyk reaguje natychmiast, a strona koszyka wysyła o 95% mniej powtarzanych zapytań.
 
 - **Cache:** Redis, APCu lub Memcached, włączany dopiero po prawdziwym teście (połączenie, hasło, zapis i odczyt); panel OPcache, ustawienia szybkości PrestaShop, czyszczenie i rozgrzewanie cache.
-- **SmartPrefetch:** pobiera stronę 65 ms po najechaniu na link; nigdy nie pobiera koszyka, zamówienia, konta ani wylogowania.
+- **SmartPrefetch:** pobiera stronę 65 ms po najechaniu na link, a w Chrome i Edge po 250 ms buduje ją w całości (prerender); nigdy nie pobiera koszyka, zamówienia, konta ani wylogowania.
 - **InstantNav:** menu podmienia tylko treść; nagłówek, menu i koszyk zostają na miejscu, bez białego ekranu.
 - **InstantCart:** dodawanie, usuwanie i zmiana ilości od razu; 20 szybkich kliknięć = 1 zapytanie.
 - **CartSpeed:** 73 identyczne zapytania → 4 na stronie koszyka.
+- **Audyt szybkości:** każda część zmierzona ze SpeedPack i bez niego w Twoim sklepie, w około minutę.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.1.1.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.2.0.zip`, potem Konfiguruj.
 </details>
 
 ---

@@ -7,7 +7,8 @@
  *   InstantCart    add to cart answers at once; quick clicks become one request
  *   CartSpeed      remembers address lookups for the page (an Address override)
  *
- * Each part lives in classes/ and can be switched off on its own on the configuration page.
+ * Each part lives in classes/ and can be switched off on its own on the configuration page. The
+ * speed audit (classes/SpcAudit.php) measures the shop with each part off and on.
  *
  * @author    Alhambra
  * @copyright 2026 Mateusz Stelmasiak (Alhambra)
@@ -18,6 +19,7 @@ if (!defined('_PS_VERSION_')) {
 }
 
 require_once dirname(__FILE__) . '/classes/SpcFeature.php';
+require_once dirname(__FILE__) . '/classes/SpcAudit.php';
 require_once dirname(__FILE__) . '/classes/SpcCartAnswer.php';
 require_once dirname(__FILE__) . '/classes/SpcCacheBackend.php';
 require_once dirname(__FILE__) . '/classes/SpcOpcache.php';
@@ -50,7 +52,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.1.1';
+        $this->version = '1.2.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -86,6 +88,9 @@ class SpeedPackCore extends Module
             return false;
         }
         Configuration::updateValue(self::K_CARTSPEED, 1);
+        // the settings page offers the speed audit until it has run once
+        Configuration::updateValue(SpcAudit::K_DONE, 0);
+        SpcAudit::key();
         foreach ($this->parts() as $part) {
             if (!$part->install()) {
                 return false;
@@ -107,6 +112,9 @@ class SpeedPackCore extends Module
             }
         }
         Configuration::deleteByName(self::K_CARTSPEED);
+        foreach ([SpcAudit::K_KEY, SpcAudit::K_HISTORY, SpcAudit::K_DONE] as $key) {
+            Configuration::deleteByName($key);
+        }
 
         return parent::uninstall();
     }
@@ -122,23 +130,30 @@ class SpeedPackCore extends Module
      *  Front office: each hook goes to the parts that use it
      * ------------------------------------------------------------------ */
 
+    /* A request from the speed audit may ask for some parts to stay out (SpcAudit::off); for
+     * every other visitor SpcAudit::off() is false and each part runs as set up. */
+
     public function hookActionFrontControllerSetMedia($params)
     {
-        foreach ($this->parts() as $part) {
-            $part->hookActionFrontControllerSetMedia();
+        foreach ($this->parts() as $id => $part) {
+            if (!SpcAudit::off($id)) {
+                $part->hookActionFrontControllerSetMedia();
+            }
         }
     }
 
     public function hookDisplayHeader($params)
     {
-        $this->smartPrefetch->hookDisplayHeader();
+        if (!SpcAudit::off('smartprefetch')) {
+            $this->smartPrefetch->hookDisplayHeader();
+        }
 
         return '';
     }
 
     public function hookDisplayProductListReviews($params)
     {
-        return $this->instantCart->hookDisplayProductListReviews($params);
+        return SpcAudit::off('instantcart') ? '' : $this->instantCart->hookDisplayProductListReviews($params);
     }
 
     /* ------------------------------------------------------------------ *
@@ -149,6 +164,9 @@ class SpeedPackCore extends Module
     {
         if (Tools::getValue('spc_ajax') === 'warmup') {
             $this->cache->ajaxWarmup();
+        }
+        if (Tools::getValue('spc_ajax') === 'audit') {
+            $this->ajaxAudit((string) Tools::getValue('step'));
         }
         $out = '';
         foreach (['actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews'] as $hook) {
@@ -181,7 +199,104 @@ class SpeedPackCore extends Module
             'sections' => $sections,
         ]]);
 
-        return $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $body;
+        return $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $this->renderAudit() . $body;
+    }
+
+    /* ------------------------------------------------------------------ *
+     *  Speed audit
+     * ------------------------------------------------------------------ */
+
+    /** One step of the audit, posted by views/js/audit.js; answers JSON. */
+    private function ajaxAudit($step)
+    {
+        header('Content-Type: application/json');
+        header('Cache-Control: no-store');
+        @set_time_limit(60);
+        $plan = SpcAudit::plan($this->context, $this);
+        switch ($step) {
+            case 'plan':
+                $answer = $plan;
+                break;
+            case 'page':
+                $i = (int) Tools::getValue('i');
+                $answer = isset($plan['pages'][$i])
+                    ? SpcAudit::page($plan['pages'][$i]['url'], $plan['tokens'])
+                    : ['error' => 'no such page'];
+                break;
+            case 'cart':
+                $answer = SpcAudit::cart($this->context, $plan['product'], $plan['tokens']['all']);
+                break;
+            case 'cartspeed':
+                $answer = SpcAudit::cartSpeed($this->context);
+                break;
+            case 'save':
+                $results = json_decode((string) Tools::getValue('results'), true);
+                $answer = is_array($results) ? ['run' => SpcAudit::save($results), 'history' => SpcAudit::history()] : ['error' => 'nothing to save'];
+                break;
+            default:
+                $answer = ['error' => 'unknown step'];
+        }
+        echo json_encode($answer);
+        exit;
+    }
+
+    private function renderAudit()
+    {
+        $this->context->controller->addCSS($this->getPathUri() . 'views/css/audit.css');
+        $this->context->controller->addJS($this->getPathUri() . 'views/js/audit.js');
+        $texts = [
+            'start' => $this->l('Measure my shop'),
+            'again' => $this->l('Measure again'),
+            'running' => $this->l('Measuring...'),
+            'plan' => $this->l('Choosing pages to measure'),
+            'nav' => $this->l('Clicking through the shop: %s'),
+            'page' => $this->l('Page %1$d of %2$d: %3$s'),
+            'cart' => $this->l('Adding to the cart'),
+            'cartspeed' => $this->l('Counting address lookups in the cart'),
+            'save' => $this->l('Saving the results'),
+            'done' => $this->l('Done in %s s.'),
+            'popupBlocked' => $this->l('The browser blocked the shop window, so the click test was skipped. Allow pop-ups for this page and measure again.'),
+            'popupWait' => $this->l('SpeedPack Core is measuring this shop. This window closes by itself in about a minute.'),
+            'otherOrigin' => $this->l('The shop is on another address than this back office, so the click test cannot run from here.'),
+            'noLinks' => $this->l('No menu links were found for the click test (see "Links swapped" in InstantNav).'),
+            'switchedOff' => $this->l('Switched off in the settings'),
+            'without' => $this->l('Without SpeedPack'),
+            'with' => $this->l('With SpeedPack'),
+            'faster' => $this->l('%sx faster'),
+            'fewer' => $this->l('%s fewer queries'),
+            'ms' => $this->l('%s ms'),
+            'queries' => $this->l('%s queries'),
+            'query' => $this->l('%s query'),
+            'same' => $this->l('About the same'),
+            'failed' => $this->l('Could not measure: %s'),
+            'noCache' => $this->l('No data cache is chosen yet: pick Redis, APCu or Memcached in the Cache section.'),
+            'noBypass' => $this->l('Only Redis can be switched off for the audit alone, so with this cache both sides are measured with it on.'),
+            'clickWithout' => $this->l('No speed-ups'),
+            'clickSp' => $this->l('SmartPrefetch'),
+            'clickNav' => $this->l('InstantNav'),
+            'clickAll' => $this->l('All of SpeedPack'),
+            'heroTitle' => $this->l('From click to page shown'),
+            'historyTitle' => $this->l('Earlier audits'),
+            'historyClick' => $this->l('Click to page, with SpeedPack'),
+            'historyPage' => $this->l('Server answer, with SpeedPack'),
+            'stopped' => $this->l('The audit stopped: %s'),
+            'prerenderNote' => $this->l('A quick 0.3 s hover. On a longer hover, Chrome and Edge also build the whole page in advance, so it shows almost at once; a test window cannot show that part.'),
+        ];
+
+        return $this->auditTemplate($texts);
+    }
+
+    private function auditTemplate(array $texts)
+    {
+        $this->context->smarty->assign(['spc_audit' => [
+            'url' => AdminController::$currentIndex . '&configure=' . $this->name . '&token=' . Tools::getAdminTokenLite('AdminModules'),
+            'home' => $this->context->link->getPageLink('index', true),
+            'texts' => json_encode($texts),
+            'history' => json_encode(SpcAudit::history()),
+            'first' => !Configuration::get(SpcAudit::K_DONE),
+        ]]);
+
+        return $this->display(__FILE__, 'views/templates/admin/audit.tpl');
     }
 
     private function cartSpeedForm()

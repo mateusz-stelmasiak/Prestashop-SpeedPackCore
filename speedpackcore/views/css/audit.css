@@ -1,0 +1,156 @@
+/**
+ * SpeedPack Core - the speed audit panel.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-audit {
+  --spc-ink: #25313c;
+  --spc-mute: #6c7a86;
+  --spc-line: #e3e8ec;
+  --spc-off: #b9c3cb;
+  --spc-on: #25b9d7;
+  --spc-good: #2fb67c;
+  --spc-run: #f2a33a;
+}
+.spc-audit--first { border-left: 4px solid var(--spc-on); }
+.spc-audit-head { display: flex; gap: 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.spc-audit-intro { flex: 1 1 360px; }
+.spc-audit-lead { font-size: 15px; color: var(--spc-ink); margin-bottom: 4px; }
+.spc-audit-start { display: inline-flex; align-items: center; gap: 8px; }
+.spc-start-ic { width: 16px; height: 16px; fill: currentColor; }
+.spc-audit--first .spc-audit-start:not([disabled]) { animation: spc-call 2.2s ease-in-out infinite; }
+.spc-audit-start[disabled] .spc-start-ic { animation: spc-spin 1s linear infinite; transform-origin: 50% 50%; }
+
+/* progress */
+.spc-audit-progress { margin: 16px 0 4px; }
+.spc-audit-track { height: 8px; border-radius: 4px; background: var(--spc-line); overflow: hidden; }
+.spc-audit-fill {
+  height: 100%; width: 0; border-radius: 4px; transition: width .4s ease;
+  background: linear-gradient(90deg, var(--spc-on), #6fd3e8, var(--spc-on)); background-size: 200% 100%;
+  animation: spc-flow 1.4s linear infinite;
+}
+.spc-audit-say { display: flex; justify-content: space-between; color: var(--spc-mute); margin: 6px 0 0; }
+.spc-audit-clock { font-variant-numeric: tabular-nums; }
+
+/* the hero: click to page shown, every mode */
+.spc-audit-hero { margin: 18px 0 6px; padding: 14px 16px; border-radius: 6px; background: #f6fbfd; border: 1px solid #d7eef5; }
+.spc-audit-hero h4 { margin: 0 0 10px; font-weight: 600; }
+
+/* cards */
+.spc-audit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin-top: 16px; }
+.spc-card {
+  display: flex; gap: 14px; padding: 14px; border: 1px solid var(--spc-line); border-radius: 6px; background: #fff;
+  transition: border-color .3s, box-shadow .3s, opacity .3s;
+}
+.spc-card h4 { margin: 0 0 2px; font-weight: 600; }
+.spc-card-body { flex: 1; min-width: 0; }
+.spc-card-what { color: var(--spc-mute); font-size: 12px; margin: 0 0 8px; }
+.spc-card.is-running { border-color: var(--spc-run); box-shadow: 0 0 0 3px rgba(242, 163, 58, .15); }
+.spc-card.is-done { border-color: #bfe8d4; }
+.spc-card.is-skipped { opacity: .6; }
+.spc-gain { font-size: 18px; font-weight: 700; color: var(--spc-good); margin: 8px 0 0; min-height: 1px; }
+.spc-gain.is-flat { color: var(--spc-mute); font-weight: 600; font-size: 14px; }
+.spc-note { color: var(--spc-mute); font-size: 12px; margin: 4px 0 0; }
+.spc-note:empty, .spc-gain:empty { display: none; }
+
+/* icons */
+.spc-icon { position: relative; flex: 0 0 52px; height: 52px; color: #8a99a6; transition: color .3s; }
+.spc-card.is-running .spc-icon { color: var(--spc-run); }
+.spc-card.is-done .spc-icon { color: var(--spc-on); animation: spc-pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+.spc-ic { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.spc-ic * { transform-box: view-box; }
+.spc-check {
+  position: absolute; right: -4px; bottom: -2px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--spc-good); transform: scale(0); transition: transform .35s cubic-bezier(.3, 1.6, .5, 1) .15s;
+}
+.spc-check svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .35s ease .4s; }
+.spc-card.is-done .spc-check { transform: scale(1); }
+.spc-card.is-done .spc-check svg { stroke-dashoffset: 0; }
+.spc-card.is-skipped .spc-check { display: none; }
+
+/* cache: the layers fill one after another */
+.spc-card.is-running .spc-ic-cache .spc-l { animation: spc-layer 1.2s ease-in-out infinite; }
+.spc-card.is-running .spc-ic-cache .spc-l2 { animation-delay: .15s; }
+.spc-card.is-running .spc-ic-cache .spc-l3 { animation-delay: .3s; }
+.spc-card.is-running .spc-ic-cache .spc-l4 { animation-delay: .45s; }
+
+/* SmartPrefetch: a radar sweep finds the next page */
+.spc-ic-radar .spc-cone { fill: currentColor; stroke: none; opacity: .18; }
+.spc-ic-radar .spc-dot, .spc-ic-radar .spc-blip { fill: currentColor; stroke: none; }
+.spc-ic-radar .spc-blip { opacity: 0; }
+.spc-ic-radar .spc-sweep { transform-origin: 24px 24px; }
+.spc-card.is-running .spc-ic-radar .spc-sweep { animation: spc-spin 1.3s linear infinite; }
+.spc-card.is-running .spc-ic-radar .spc-blip { animation: spc-blip 1.3s ease-out infinite; }
+.spc-card.is-done .spc-ic-radar .spc-blip { opacity: 1; }
+
+/* InstantNav: the bolt strikes, speed lines stream */
+.spc-ic-bolt .spc-boltpath { fill: currentColor; fill-opacity: .12; transform-origin: 24px 24px; }
+.spc-ic-bolt .spc-trail { stroke-dasharray: 4 12; opacity: .0; }
+.spc-card.is-running .spc-ic-bolt .spc-boltpath { animation: spc-zap .9s ease-in-out infinite; }
+.spc-card.is-running .spc-ic-bolt .spc-trail { opacity: 1; animation: spc-stream .6s linear infinite; }
+.spc-card.is-running .spc-ic-bolt .spc-t2 { animation-delay: .2s; }
+.spc-card.is-running .spc-ic-bolt .spc-t3 { animation-delay: .4s; }
+.spc-card.is-done .spc-ic-bolt .spc-boltpath { fill-opacity: .35; }
+
+/* InstantCart: a product drops in, the cart bounces */
+.spc-ic-cart .spc-item { fill: currentColor; stroke: none; opacity: 0; }
+.spc-ic-cart .spc-cartbody { transform-origin: 24px 38px; }
+.spc-card.is-running .spc-ic-cart .spc-item { animation: spc-drop 1s ease-in infinite; }
+.spc-card.is-running .spc-ic-cart .spc-cartbody { animation: spc-bounce 1s ease-out infinite; }
+.spc-card.is-done .spc-ic-cart .spc-item { opacity: 1; transform: translateY(12px); }
+
+/* CartSpeed: the needle swings to the right */
+.spc-ic-gauge .spc-dot { fill: currentColor; stroke: none; }
+.spc-ic-gauge .spc-ticks { opacity: .6; }
+.spc-ic-gauge .spc-needle { transform-origin: 24px 36px; transform: rotate(-80deg); transition: transform .8s cubic-bezier(.3, 1.5, .5, 1); }
+.spc-card.is-running .spc-ic-gauge .spc-needle { animation: spc-needle 1.1s ease-in-out infinite alternate; }
+.spc-card.is-done .spc-ic-gauge .spc-needle { transform: rotate(0deg); }
+
+/* bars */
+.spc-bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 6px 10px; align-items: center; }
+.spc-bar-label { font-size: 12px; color: var(--spc-mute); white-space: nowrap; }
+.spc-bar-track { height: 12px; border-radius: 6px; background: #f1f4f6; overflow: hidden; }
+.spc-bar-fill { height: 100%; width: 0; border-radius: 6px; background: var(--spc-off); transition: width .9s cubic-bezier(.2, .8, .2, 1); }
+.spc-bar-fill.is-on { background: linear-gradient(90deg, var(--spc-on), #57cfe6); }
+.spc-bar-fill.is-best { background: linear-gradient(90deg, var(--spc-good), #59d39c); }
+.spc-bar-value { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; min-width: 56px; }
+.spc-bars--hero .spc-bar-track { height: 18px; border-radius: 9px; }
+.spc-bars--hero .spc-bar-fill { border-radius: 9px; }
+.spc-bars--hero .spc-bar-label, .spc-bars--hero .spc-bar-value { font-size: 13px; }
+
+/* history */
+.spc-audit-history { margin-top: 20px; }
+.spc-audit-history h4 { font-weight: 600; }
+.spc-history-chart svg { max-width: 100%; height: auto; display: block; }
+.spc-history-chart .spc-axis { stroke: var(--spc-line); stroke-width: 1; }
+.spc-history-chart .spc-tick { fill: var(--spc-mute); font-size: 11px; }
+.spc-history-chart .spc-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: spc-draw 1.6s ease forwards; }
+.spc-history-chart .spc-line-a { stroke: var(--spc-on); }
+.spc-history-chart .spc-line-b { stroke: var(--spc-good); animation-delay: .3s; }
+.spc-history-chart .spc-pt { stroke: #fff; stroke-width: 2; opacity: 0; animation: spc-fade .4s ease forwards 1.2s; }
+.spc-history-chart .spc-pt-a { fill: var(--spc-on); }
+.spc-history-chart .spc-pt-b { fill: var(--spc-good); }
+.spc-history-legend { display: flex; gap: 16px; color: var(--spc-mute); font-size: 12px; margin-top: 6px; }
+.spc-history-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+@keyframes spc-spin { to { transform: rotate(360deg); } }
+@keyframes spc-flow { to { background-position: -200% 0; } }
+@keyframes spc-call { 0%, 100% { box-shadow: 0 0 0 0 rgba(37, 185, 215, .45); } 50% { box-shadow: 0 0 0 10px rgba(37, 185, 215, 0); } }
+@keyframes spc-pop { 0% { transform: scale(.85); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes spc-layer { 0%, 100% { stroke: currentColor; } 40% { stroke: var(--spc-on); stroke-width: 3.2; } }
+@keyframes spc-blip { 0%, 55% { opacity: 0; transform: scale(.4); } 65% { opacity: 1; transform: scale(1.3); } 100% { opacity: 0; transform: scale(1); } }
+@keyframes spc-zap { 0%, 100% { transform: scale(1); fill-opacity: .12; } 15% { transform: scale(1.12) translateX(2px); fill-opacity: .7; } 30% { transform: scale(1); fill-opacity: .2; } }
+@keyframes spc-stream { from { stroke-dashoffset: 16; } to { stroke-dashoffset: 0; } }
+@keyframes spc-drop { 0% { opacity: 0; transform: translateY(-6px); } 20% { opacity: 1; } 70% { opacity: 1; transform: translateY(13px); } 100% { opacity: 0; transform: translateY(13px); } }
+@keyframes spc-bounce { 0%, 60% { transform: translateY(0); } 72% { transform: translateY(2px) scaleY(.96); } 85% { transform: translateY(-1px); } 100% { transform: translateY(0); } }
+@keyframes spc-needle { from { transform: rotate(-80deg); } to { transform: rotate(70deg); } }
+@keyframes spc-draw { to { stroke-dashoffset: 0; } }
+@keyframes spc-fade { to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spc-audit *, .spc-audit *::before { animation: none !important; transition: none !important; }
+  .spc-history-chart .spc-line { stroke-dashoffset: 0; }
+  .spc-history-chart .spc-pt { opacity: 1; }
+}

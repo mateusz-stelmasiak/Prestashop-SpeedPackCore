@@ -271,6 +271,8 @@ class SpcCacheBackend
             'database' => (int) $redis['database'],
             'prefix' => (string) $redis['prefix'],
             'timeout' => 0.5,
+            // lets the speed audit's signed requests run without the cache, see SpcAudit
+            'audit' => SpcAudit::key(),
         ];
 
         $code = str_replace(

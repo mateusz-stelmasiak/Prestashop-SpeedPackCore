@@ -105,6 +105,21 @@ class SpcCache extends SpcFeature
         ];
     }
 
+    /**
+     * Writes the Redis class again from the module's template, when Redis is the cache in use
+     * (an upgrade brings a new template; the copy in override/ keeps the old one until then).
+     *
+     * @return string[] errors
+     */
+    public function refreshRedisClass()
+    {
+        if (SpcCacheBackend::current() !== SpcCacheBackend::REDIS) {
+            return [];
+        }
+
+        return SpcCacheBackend::installRedisClass($this->redisSettings(), $this->module);
+    }
+
     protected function memcachedSettings()
     {
         return [

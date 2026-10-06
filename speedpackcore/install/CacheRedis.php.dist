@@ -35,7 +35,34 @@ class CacheRedis extends Cache
 
     public function __construct()
     {
+        if ($this->audited()) {
+            return;
+        }
         $this->connect();
+    }
+
+    /**
+     * A request from SpeedPack Core's speed audit that asks for the shop without its data cache:
+     * a cookie signed with this shop's audit key, not yet expired, whose list of parts leaves the
+     * cache out. Such a request reads the database directly, as the shop would without the module.
+     */
+    protected function audited()
+    {
+        $key = isset(self::$settings['audit']) ? (string) self::$settings['audit'] : '';
+        if ($key === '' || empty($_COOKIE['spc_audit']) || !is_string($_COOKIE['spc_audit'])) {
+            return false;
+        }
+        $cookie = explode('.', $_COOKIE['spc_audit'], 2);
+        if (count($cookie) !== 2) {
+            return false;
+        }
+        $payload = (string) base64_decode(strtr($cookie[0], '-_', '+/'));
+        if (!hash_equals(hash_hmac('sha256', $payload, $key), $cookie[1])) {
+            return false;
+        }
+        $data = explode('|', $payload, 2);
+
+        return isset($data[1]) && (int) $data[1] >= time() && !in_array('cache', explode(',', $data[0]), true);
     }
 
     public function __destruct()

@@ -1,5 +1,13 @@
 # Changelog
 
+## SpeedPack Core 1.2.0
+
+- **Speed audit.** One button on the settings page (offered after install and after upgrading) measures each part without SpeedPack and with it, on the shop's own server, in about a minute: server answer time of five pages (data cache), click to page shown through the menu with no speed-ups, SmartPrefetch, InstantNav and everything (in a shop window it opens), adding to the cart (cart page against the lean endpoint) and the cart's address lookups (CartSpeed). Animated icons and before/after bars, and a chart of the last 12 audits. "Without" applies only to the audit's own requests, through a signed cookie valid for 15 minutes; with Redis, the cache class steps aside for them too.
+- **SmartPrefetch 2.0.** In Chrome and Edge, prefetching goes through the browser's Speculation Rules: prefetch on hover, and a full prerender when the pointer stays 250 ms (new switch, on by default; at most 4 per visit; never on touch). In a mock-shop benchmark at a 300 ms hover the click showed the page in 321 ms instead of 570 ms, and in 35 ms after a 1 s hover. The old prefetch hint, which PrestaShop pages could not reuse, is gone.
+- In other browsers the service worker no longer downloads a page twice when the click arrives while the prefetch is still running (a quick click went from 936 ms to 533 ms in the same benchmark).
+- SmartPrefetch leaves the menu links InstantNav swaps in to InstantNav, instead of fetching them twice.
+- PrestaShop 9 is supported.
+
 ## SpeedPack Core 1.1.1
 
 Security fixes from the PrestaShop Addons review:

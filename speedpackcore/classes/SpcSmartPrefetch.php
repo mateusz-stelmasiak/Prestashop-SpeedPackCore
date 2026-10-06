@@ -33,6 +33,7 @@ class SpcSmartPrefetch extends SpcFeature
     public const K_VIEWPORT = 'SPC_SP_VIEWPORT';
     public const K_VIEWPORT_SELECTOR = 'SPC_SP_VIEWPORT_SEL';
     public const K_DEBUG = 'SPC_SP_DEBUG';
+    public const K_PRERENDER = 'SPC_SP_PRERENDER';
 
     /**
      * Pages that must never be prefetched: they mutate state, are personal to
@@ -101,6 +102,8 @@ class SpcSmartPrefetch extends SpcFeature
             self::K_WARMUP_SELECTOR => '#header .top-menu a[data-depth="0"], .carousel .carousel-item .caption p a',
             self::K_VIEWPORT => 0,
             self::K_VIEWPORT_SELECTOR => '.product-miniature .product-title a',
+            // Chrome and Edge build the whole page when the pointer stays a moment longer.
+            self::K_PRERENDER => 1,
             // Off by default; turn it on to see in the browser console what the module does.
             self::K_DEBUG => 0,
         ];
@@ -169,6 +172,9 @@ class SpcSmartPrefetch extends SpcFeature
                 'scope' => $this->workerScope(),
                 'debug' => (bool) $this->conf(self::K_DEBUG),
                 'denyPrefixes' => $this->unsafePathPrefixes(),
+                'prerender' => (bool) $this->conf(self::K_PRERENDER),
+                'prerenderDelay' => 250,
+                'maxPrerender' => 4,
             ],
         ]);
 
@@ -331,6 +337,7 @@ class SpcSmartPrefetch extends SpcFeature
                 Configuration::updateValue(self::K_VIEWPORT, (int) Tools::getValue(self::K_VIEWPORT));
                 Configuration::updateValue(self::K_VIEWPORT_SELECTOR, $viewSel);
                 Configuration::updateValue(self::K_DEBUG, (int) Tools::getValue(self::K_DEBUG));
+                Configuration::updateValue(self::K_PRERENDER, (int) Tools::getValue(self::K_PRERENDER));
 
                 $output .= $this->displayConfirmation($this->l('Settings updated.'));
             }
@@ -364,6 +371,8 @@ class SpcSmartPrefetch extends SpcFeature
 
         $rows = [
             $this->l('Enabled') => $this->conf(self::K_ENABLED) ? $this->l('yes') : $this->l('no'),
+            $this->l('Engine') => $this->l('Speculation Rules in Chrome and Edge (prefetch on hover, prerender on a longer hover); a service worker in other browsers'),
+            $this->l('Prerender') => $this->conf(self::K_PRERENDER) ? $this->l('yes') : $this->l('no'),
             $this->l('Console logging') => $this->conf(self::K_DEBUG) ? $this->l('yes') : $this->l('no'),
             $this->l('Script file') => $asset ? $asset : $this->l('MISSING'),
             $this->l('Hook actionFrontControllerSetMedia') => $this->isRegisteredInHook('actionFrontControllerSetMedia') ? $this->l('registered') : $this->l('NOT registered'),
@@ -435,6 +444,7 @@ class SpcSmartPrefetch extends SpcFeature
                     'label' => $this->l('In-view selector'),
                     'name' => self::K_VIEWPORT_SELECTOR,
                 ],
+                $switch($this->l('Prerender on a longer hover (Chrome, Edge)'), self::K_PRERENDER, $this->l('When the pointer stays on a link for 250 ms, the browser builds the whole page in the background, so the click shows it at once. At most 4 pages per visit. Off on touch screens, where a tap gives no warning.')),
                 $switch($this->l('Log to the browser console'), self::K_DEBUG, $this->l('Prints what is prefetched and why, under the [smart-prefetch] prefix. Useful while confirming the module works; turn it off afterwards.')),
             ],
             'submit' => ['title' => $this->l('Save'), 'class' => 'btn btn-default pull-right'],
