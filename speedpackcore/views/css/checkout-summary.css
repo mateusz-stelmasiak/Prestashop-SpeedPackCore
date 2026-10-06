@@ -31,3 +31,13 @@
 .spc-ccart-total { flex: none; font-size: .92rem; color: #143848; }
 .spc-ccart-more { display: block; width: 100%; margin-top: 4px; padding: 6px 0 0; border: 0; border-top: 1px solid rgba(0, 0, 0, .05); background: none; font-size: .85rem; font-weight: 600; color: #24b9d7; cursor: pointer; }
 
+
+/* a closed, finished step opens from a click anywhere on it (checkout-summary.js) */
+.checkout-step.spc-step-openable { cursor: pointer; transition: background-color .2s ease; }
+.checkout-step.spc-step-openable .step-title { cursor: pointer; }
+.checkout-step.spc-step-openable:hover { background-color: #fafbfb; }
+.checkout-step.spc-step-openable .step-edit { transition: color .2s ease, transform .2s ease; }
+.checkout-step.spc-step-openable:hover .step-edit { color: #24b9d7 !important; transform: translateX(-3px); }
+.checkout-step.spc-step-openable .step-title:focus { outline: none; }
+.checkout-step.spc-step-openable .step-title:focus-visible { outline: 2px solid #24b9d7; outline-offset: 4px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .checkout-step.spc-step-openable, .checkout-step.spc-step-openable .step-edit { transition: none; } }

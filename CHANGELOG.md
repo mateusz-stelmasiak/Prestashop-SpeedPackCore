@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.6.3
+
+- **A finished checkout step opens from a click anywhere on it**, not only on "edit": the title, the summary under it, an empty corner. It unfolds smoothly and comes into view; the whole step shows the hand and lights up on hover; the keyboard reaches it too (Tab, then Enter). Works with PrestaShop's own handler and without it. Part of the checkout summaries, so on by default.
+
 ## SpeedPack Core 1.6.2
 
 - **The cart's products at the top of the checkout's side column:** picture, name, options, quantity × price and line total, five shown and "show all"; asked for again when the cart changes on the page (a product added from the side column).

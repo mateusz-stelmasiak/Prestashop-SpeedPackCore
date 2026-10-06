@@ -90,6 +90,40 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
     if (SHOTS) { await p.locator('section#checkout').screenshot({ path: SHOTS + '/checkout-summaries-' + w + '.png' }); }
     await p.close();
   }
+  // --- a finished step opens from a click anywhere on it, not only on "edit"
+  for (const core of [false, true]) {
+    p = await page(1280);
+    await p.goto(BASE + '/pl/zamowienie?summary=1&done=3');
+    await p.waitForSelector('.spc-step-summary');
+    if (core) {
+      // PrestaShop's own handler (core checkout.js): the steps before the current one open on a click
+      await p.evaluate(() => {
+        const steps = Array.prototype.slice.call(document.querySelectorAll('.checkout-step'));
+        steps.slice(0, 3).forEach((s) => { s.classList.add('-clickable'); s.addEventListener('click', () => {
+          steps.forEach((x) => x.classList.remove('-current', 'js-current-step')); s.classList.add('-current', 'js-current-step');
+        }); });
+      });
+    }
+    const current = () => p.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.checkout-step'), (s) => s.classList.contains('-current') ? 1 : 0).join(''));
+    const how = core ? ' (with PrestaShop\'s own handler)' : ' (without it)';
+    ok(await p.evaluate(() => getComputedStyle(document.querySelector('#checkout-addresses-step')).cursor === 'pointer' && document.querySelector('#checkout-addresses-step .step-title').getAttribute('role') === 'button'), 'a closed step shows the hand anywhere on it, and is a button for the keyboard' + how);
+    await p.click('#checkout-addresses-step .spc-step-summary');
+    await p.waitForTimeout(600);
+    ok(await current() === '0100' && await p.evaluate(() => document.querySelector('#checkout-addresses-step .content').offsetHeight > 0 && document.querySelector('#checkout-addresses-step .content').style.height === ''), 'a click on the summary text opens the step, and it unfolds fully' + how);
+    const box = await p.locator('#checkout-personal-information-step').boundingBox();
+    await p.mouse.click(box.x + box.width - 40, box.y + box.height - 6);
+    await p.waitForTimeout(600);
+    ok(await current() === '1000', 'a click on an empty corner of a step opens it too' + how);
+    await p.focus('#checkout-delivery-step .step-title');
+    await p.keyboard.press('Enter');
+    await p.waitForTimeout(600);
+    ok(await current() === '0010', 'Enter on a focused step opens it' + how);
+    await p.click('#checkout-delivery-step .content');
+    await p.waitForTimeout(300);
+    ok(await current() === '0010', 'clicks inside the open step change nothing');
+    await p.close();
+  }
+
   ok(errors.length === 0, 'no script errors ' + JSON.stringify(errors));
   await b.close();
   console.log(failed ? failed + ' FAILED' : 'ALL OK');
