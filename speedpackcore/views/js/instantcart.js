@@ -628,7 +628,7 @@
   }
   // the summary shows "updating" until the shop sends the new totals
   function pendingTotals(on) {
-    Array.prototype.forEach.call(document.querySelectorAll('.cart-summary-line .value, .cart-total .value, .js-subtotal'), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll('.cart-summary-line > .value, .cart-total > .value, .js-subtotal'), function (el) {
       el.classList.toggle('ic-pending', on);
     });
   }
@@ -641,10 +641,12 @@
     var t = res.totals;
     if (!t) return false;
     if (res.label) setText('.js-subtotal', res.label);
-    var found = setText('#cart-subtotal-products .value', t.products);
-    setText('#cart-subtotal-shipping .value', t.shipping);
-    if (t.discount) setText('#cart-subtotal-discount .value', t.discount);
-    return setText('.cart-summary-totals .cart-total .value, .cart-detailed-totals .cart-total .value', t.total) && found;
+    // only the line's own value: Classic's shipping line has a second, small .value under it
+    // (displayCheckoutSubtotalDetails), which must keep what the modules put there
+    var found = setText('#cart-subtotal-products > .value', t.products);
+    setText('#cart-subtotal-shipping > .value', t.shipping);
+    if (t.discount) setText('#cart-subtotal-discount > .value', t.discount);
+    return setText('.cart-summary-totals .cart-total > .value, .cart-detailed-totals .cart-total > .value', t.total) && found;
   }
 
   function removeLine(link, line) {

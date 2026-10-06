@@ -54,6 +54,7 @@ class Context
         return self::$c;
     }
     function getCurrentLocale() { return new FakeLocale(); }
+    function getTranslator() { return new class { function trans($s, $p = [], $d = '') { return strtr($s === '1 item' ? '1 sztuka' : '%count% sztuk', $p); } }; }
 }
 class Currency { public $iso_code; function __construct($id) { $this->iso_code = $id == 2 ? 'EUR' : 'PLN'; } }
 
@@ -62,6 +63,7 @@ class Product
 {
     static $all = [];
     public $id, $active, $available_for_order;
+    static function getTaxCalculationMethod($idCustomer = null) { return 0; }
     function __construct($id, $full = false, $lang = null) { if (isset(self::$all[$id])) { $this->id = $id; $this->active = self::$all[$id][0]; $this->available_for_order = self::$all[$id][1]; } }
 }
 class Address
@@ -96,7 +98,16 @@ class Cart
         Db::getInstance()->execute("INSERT INTO rot_cart_product (id_cart, id_product, id_product_attribute, quantity) VALUES ({$this->id}, $p, " . (int) $a . ", $q) ON DUPLICATE KEY UPDATE quantity = quantity + $q");
         return true;
     }
-    function getProducts($refresh = false) { return Db::getInstance()->executeS("SELECT 1 id_shop, id_product, id_product_attribute, quantity cart_quantity, quantity * 10 total_wt FROM rot_cart_product WHERE id_cart = {$this->id} ORDER BY id_product"); }
+    function getProducts($refresh = false)
+    {
+        $rows = Db::getInstance()->executeS("SELECT 1 id_shop, id_product, id_product_attribute, quantity cart_quantity, quantity * 10 total_wt FROM rot_cart_product WHERE id_cart = {$this->id} ORDER BY id_product");
+        foreach ($rows as &$r) {
+            $r += ['name' => 'Produkt ' . $r['id_product'], 'attributes_small' => $r['id_product_attribute'] ? 'Słoik 1 l' : '', 'price_wt' => 10, 'price' => 8, 'total' => $r['cart_quantity'] * 8,
+                'link_rewrite' => 'p' . $r['id_product'], 'id_image' => $r['id_product'] == 7 ? '7-70' : $r['id_product'] . '-0'];
+        }
+
+        return $rows;
+    }
     function getDeliveryOptionList() { $o = []; foreach (self::$deliverable as $c) { $o[$this->id_address_delivery][$c . ','] = []; } return $o; }
     function setDeliveryOption($o) { $this->delivery_option = json_encode($o); }
     public $shipping = 0.0;
@@ -191,13 +202,15 @@ $ctx->cart = new Cart();
 $part = new SpcReorder(new Module(), $ctx, 'Reorder');
 Configuration::$v += [SpcReorder::K_HOME => 1, SpcReorder::K_CART => 1, SpcReorder::K_ACCOUNT => 1, SpcReorder::K_PAYMENT => 1];
 $card = $part->card('home');
-ok($card['id_order'] === 102 && $card['total'] === '189,50 zł' && $card['date'] === '02.10.2026' && $card['count'] === 5 && $card['more'] === 2 && count($card['lines']) === 3 && $card['token'] === 'tok123', 'the card: the last order, its total and date, three lines and "2 more"');
+ok($card['id_order'] === 102 && $card['total'] === '189,50 zł' && $card['date'] === '02.10.2026' && $card['count'] === 5 && $card['more'] === 1 && count($card['list']) === 4 && $card['token'] === 'tok123', 'the card: the last order, its total and date, four products and "1 more"');
 $html = $part->show('home');
 echo '    ', trim(preg_replace('/\s+/', ' ', strip_tags($html))), "\n";
 ok(strpos($html, 'action="https://shop.test/module/speedpackcore/reorder" method="post"') !== false && strpos($html, 'name="token" value="tok123"') !== false && strpos($html, 'data-spc-reorder') !== false, 'a form posting to the reorder endpoint with the shop token');
 ok(strpos($html, 'Zakwas &lt;b&gt;buraczany&lt;/b&gt; - 1 l') !== false && strpos($html, '<b>buraczany') === false, 'product names shown as text');
-ok(strpos($html, 'Welcome back, Anna!') !== false && strpos($html, 'and 2 more') !== false && strpos($html, 'Straight to payment') !== false, 'greeting, the rest counted, what the tap does');
-ok(count($card['thumbs']) === 2 && $card['thumbs'][0]['src'] === 'https://shop.test/70-small_default/kimchi.jpg' && $card['items'] === 9 && substr_count($html, '<img src="https://shop.test/') === 2 && strpos($html, '+2') !== false, 'the card: cover pictures of the first products (their cover image), "+2", 9 items');
+ok(strpos($html, 'Welcome back, Anna!') !== false && strpos($html, 'and 1 more') !== false && strpos($html, 'Straight to payment') !== false, 'greeting, the rest counted, what the tap does');
+ok($card['list'][0] === ['name' => 'Kimchi klasyczne', 'qty' => 2, 'src' => 'https://shop.test/70-small_default/kimchi.jpg'] && $card['list'][1]['src'] === 'https://shop.test/80-small_default/zakwas.jpg' && $card['list'][2]['src'] === '' && $card['items'] === 9, 'the list: each product with its picture (its cover) and quantity');
+ok(substr_count($html, '<img src="https://shop.test/') === 2 && substr_count($html, 'spc-reorder-noimg') === 2 && strpos($html, '&times;&nbsp;2') !== false, 'pictures where there are some, a quiet square where not, the quantity');
+ok(preg_match_all('#<svg width="(\d+)" height="\1"[^>]*fill="none" stroke="currentColor"#', $html) === 2, 'the icons carry their own size and colours (small even before the stylesheet arrives)');
 if (getenv('SPC_REORDER_HTML')) { file_put_contents(getenv('SPC_REORDER_HTML'), $html); }
 $tile = $part->show('account');
 ok(strpos($tile, 'link-item') !== false && strpos($tile, 'Order the same as last time') !== false && strpos($tile, 'spc-reorder-tile') !== false, 'the account tile');
@@ -233,6 +246,15 @@ ok($sum['checkout-delivery-step'] === 'Kurier 8 · gratis' && $sum['checkout-add
 $ctx->controller->php_self = 'order'; Media::$defs = []; $ctx->controller->css = [];
 $part->hookActionFrontControllerSetMedia();
 ok(isset(Media::$defs['spcCheckout']['checkout-delivery-step'], $ctx->controller->css['spc-checkout']), 'on the checkout: the summaries and their stylesheet (even with the reorder card off)');
+$sc->updateQty(2, 7); $sc->updateQty(1, 8, 40); $sc->updateQty(6, 13);
+$cl = SpcReorder::cartList($ctx);
+echo '    cart list ', json_encode($cl, JSON_UNESCAPED_UNICODE), "\n";
+ok($cl['count'] === 9 && $cl['countText'] === '9 sztuk' && count($cl['items']) === 3, 'the checkout list: every line, 9 items in all');
+ok($cl['items'][0]['name'] === 'Produkt 7' && $cl['items'][0]['qty'] === 2 && $cl['items'][0]['total'] === '20,00 zł' && $cl['items'][0]['unit'] === '10,00 zł' && $cl['items'][0]['src'] === 'https://shop.test/70-cart_default/p7.jpg', 'a line: name, quantity, price each and in all (with tax), its picture');
+ok($cl['items'][1]['attrs'] === 'Słoik 1 l' && $cl['items'][1]['src'] === '', 'its options; no picture when the product has none');
+ok(SpcReorder::cartList((object) ['cart' => new Cart()])['items'] === [], 'no cart yet: an empty list');
+ok(isset(Media::$defs['spcCheckoutCart']['url'], Media::$defs['spcCheckoutCart']['items']) && strpos(Media::$defs['spcCheckoutCart']['url'], '/cartlist') !== false, 'the checkout gets the list and where to ask again');
+if (getenv('SPC_CHECKOUT_CART_JSON')) { file_put_contents(getenv('SPC_CHECKOUT_CART_JSON'), json_encode(['items' => array_merge($cl['items'], $cl['items'], $cl['items']), 'count' => 27, 'countText' => '27 sztuk', 'title' => 'W koszyku', 'more' => 'Pokaż wszystkie (%d)', 'less' => 'Pokaż mniej', 'url' => '/__cartlist'], JSON_UNESCAPED_UNICODE)); }
 if (getenv('SPC_CHECKOUT_JSON')) { file_put_contents(getenv('SPC_CHECKOUT_JSON'), json_encode(SpcReorder::summaries($ctx, ['invoice' => 'faktura: %s', 'free' => 'gratis']), JSON_UNESCAPED_UNICODE)); }
 
 // ---------- settings

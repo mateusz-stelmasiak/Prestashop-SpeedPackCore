@@ -1,5 +1,13 @@
 # Changelog
 
+## SpeedPack Core 1.6.2
+
+- **The cart's products at the top of the checkout's side column:** picture, name, options, quantity × price and line total, five shown and "show all"; asked for again when the cart changes on the page (a product added from the side column).
+- **Reorder's card:** the last order's products listed on the right (picture, name, quantity), the text and the button on the left; its icons carry their own size, so they stay small even when a stylesheet is late.
+- **Fix:** after a quantity change on the cart page, the shipping line showed its price twice ("Za darmo! Za darmo!"): the small text PrestaShop's Classic keeps under the shipping price was overwritten. Only the line's own value changes now (InstantCart, and AsyncCart 1.0.1).
+- **Fix:** after an update, a changed stylesheet of the module did not reach the shop while PrestaShop's "combine CSS" was on (its file is named after the list of files, not their content). The module now has PrestaShop make its combined CSS and JS again once after each update, and empties its page cache with it.
+- tests/run.sh: a broken quote from 1.6.1 fixed; a new browser test for the cart quantities.
+
 ## SpeedPack Core 1.6.1
 
 - **The path on every order and cart:** the back-office order page (displayAdminOrderMain from 1.7.7, displayAdminOrder before) and the cart page (placed at the top by a small script, on the old and the new page) show every visit behind them: summary tiles (visits, days to decide, pages, engaged time, where the shopper first came from, devices) and each visit page by page, with the time on each, cart additions, checkout steps, errors shown and the pay button. Visits now remember their cart; existing tables get the column on upgrade. A switch in Behaviour.

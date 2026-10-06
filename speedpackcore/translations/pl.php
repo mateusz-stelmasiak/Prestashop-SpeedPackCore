@@ -240,3 +240,6 @@ $_MODULE['<{speedpackcore}prestashop>reorder_abf37e8d623a7a959a9e662f2c24624c'] 
 $_MODULE['<{speedpackcore}prestashop>spcreorder_b6c4c5b74afc87ecfbcb208e66ee98fe'] = 'faktura: %s';
 $_MODULE['<{speedpackcore}prestashop>spcreorder_aa2d6e4f578eb0cfaba23beef76c2194'] = 'gratis';
 $_MODULE['<{speedpackcore}prestashop>spcreorder_abf37e8d623a7a959a9e662f2c24624c'] = 'Od razu do płatności';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_0015e88b5d633027dac0beb1a06f088a'] = 'W koszyku';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_18781cbc4a397a8eccbfa46fd0c7df3e'] = 'Pokaż wszystkie (%d)';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_cb498319a0474b3cf57a00a4ff4bc63a'] = 'Pokaż mniej';

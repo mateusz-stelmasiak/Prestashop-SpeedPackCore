@@ -28,7 +28,7 @@ class AsyncCart extends Module
     {
         $this->name = 'asynccart';
         $this->tab = 'front_office_features';
-        $this->version = '1.0.0';
+        $this->version = '1.0.1';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;

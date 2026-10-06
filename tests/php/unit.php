@@ -9,7 +9,7 @@ class Shop { static function isFeatureActive(){ return false; } }
 class Tools { static function getHttpHost($a=false,$b=false,$c=false){ return 'shop.test'; } static $post=[]; static function strtolower($s){return strtolower($s);} static function strlen($s){return strlen($s);} static function strpos($a,$b){return strpos($a,$b);} static function strrpos($a,$b){return strrpos($a,$b);} static function substr($a,$b,$c=null){return substr($a,$b,$c);}
   static function isSubmit($k){ return isset(self::$post[$k]); } static function getValue($k,$d=false){ return isset(self::$post[$k]) ? self::$post[$k] : $d; } static function getToken($x){ return 'tok'; } static function getAdminTokenLite($x){ return 'adm'; } static function passwdGen($n=8){ return substr(str_repeat(md5(mt_rand()),4),0,$n); } static function clearSmartyCache(){} static function safeOutput($s){ return $s; } }
 class Link { function getModuleLink($m,$c,$p=[],$s=null){ return "https://shop.test/module/$m/$c"; } function getPageLink($p,$s=null,$l=null,$q=null){ return "https://shop.test/pl/$p"; } function getCMSLink($id,$a=null,$b=null,$c=null){ return "https://shop.test/pl/content/$id-about"; } }
-class Media { static $defs=[]; static function addJsDef($a){ self::$defs = array_merge(self::$defs,$a); } }
+class Media { static $cleared = 0; static function clearCache() { self::$cleared++; } static $defs=[]; static function addJsDef($a){ self::$defs = array_merge(self::$defs,$a); } }
 class FrontCtl { public $php_self='category'; public $js=[]; function addJS($p){ $this->js['admin'][]=$p; } function addCSS($p){ $this->js["admincss"][]=$p; } function registerJavascript($id,$p,$o=[]){ $this->js[$id]=$p; } function registerStylesheet($id,$p,$o=[]){ $this->js['css:'.$id]=$p; } }
 class Smarty { public $vars=[]; function assign($a, $v = null){ $this->vars = array_merge($this->vars, is_array($a) ? $a : [$a => $v]); } }
 class Context { public $link, $controller, $language, $smarty, $shop; static $c; static function getContext(){ if(!self::$c){ self::$c=new Context; self::$c->link=new Link; self::$c->controller=new FrontCtl; self::$c->language=(object)['id'=>1]; self::$c->shop=new SpcShopStub; self::$c->smarty=new Smarty; } return self::$c; } }
@@ -105,6 +105,9 @@ assert_ok(upgrade_module_1_6_0($m) && Configuration::get('SPC_RO_ENABLED') === 0
 unset(Configuration::$v['SPC_BH_PATHS'], Configuration::$v['SPC_RO_SUMMARY'], Module::$hooks['displayAdminOrderMain'], Module::$hooks['displayBackOfficeHeader']);
 require_once SPC_MODULE . '/upgrade/upgrade-1.6.1.php';
 assert_ok(upgrade_module_1_6_1($m) && Configuration::get('SPC_BH_PATHS') === 1 && Configuration::get('SPC_RO_SUMMARY') === 1 && isset(Module::$hooks['displayAdminOrderMain'], Module::$hooks['displayAdminOrder'], Module::$hooks['displayBackOfficeHeader']), 'upgrade to 1.6.1: paths on orders and carts, checkout summaries, their hooks');
+// an update: PrestaShop's combined CSS and JS are made again, once per version
+Configuration::$v['SPC_ASSETS_VERSION'] = '1.0.0'; Media::$cleared = 0;
+assert_ok($m->assetsUpdated() === true && Media::$cleared === 1 && Configuration::get('SPC_ASSETS_VERSION') === $m->version && $m->assetsUpdated() === false && Media::$cleared === 1, 'after an update the combined CSS and JS are made again, once');
 // upgrading from 1.4: Behaviour's settings (recording off), tables and order hook
 foreach (['SPC_BH_ENABLED', 'SPC_BH_CONSENT', 'SPC_BH_CUSTOMER', 'SPC_BH_KEEP'] as $k) { unset(Configuration::$v[$k]); }
 unset(Module::$hooks['actionValidateOrder']);

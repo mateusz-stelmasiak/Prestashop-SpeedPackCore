@@ -2,7 +2,7 @@
 <module>
     <name>asynccart</name>
     <displayName><![CDATA[AsyncCart]]></displayName>
-    <version><![CDATA[1.0.0]]></version>
+    <version><![CDATA[1.0.1]]></version>
     <description><![CDATA[Quantity changes and removals on the cart page happen at once; quick changes reach the shop as one request.]]></description>
     <author><![CDATA[Alhambra]]></author>
     <tab><![CDATA[front_office_features]]></tab>

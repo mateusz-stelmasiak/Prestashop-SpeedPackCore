@@ -19,17 +19,23 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
   const card = await p.evaluate(() => {
     const c = document.querySelector('.spc-reorder').getBoundingClientRect();
     const btn = document.querySelector('.spc-reorder-go').getBoundingClientRect();
-    const thumbs = Array.prototype.map.call(document.querySelectorAll('.spc-reorder-thumbs img'), (i) => i.complete && i.naturalWidth > 0);
-    return { inside: btn.right <= c.right && btn.left >= c.left, row: Math.abs((btn.top + btn.bottom) / 2 - (c.top + c.bottom) / 2) < 30, thumbs, more: !!document.querySelector('.spc-reorder-more'),
-      overflow: document.documentElement.scrollWidth > innerWidth, bg: getComputedStyle(document.querySelector('.spc-reorder')).backgroundColor, upper: getComputedStyle(document.querySelector('.spc-reorder-go')).textTransform };
+    const list = document.querySelector('.spc-reorder-items').getBoundingClientRect();
+    const main = document.querySelector('.spc-reorder-main').getBoundingClientRect();
+    const imgs = Array.prototype.map.call(document.querySelectorAll('.spc-reorder-items img'), (i) => i.complete && i.naturalWidth > 0);
+    const icons = Array.prototype.map.call(document.querySelectorAll('.spc-reorder svg'), (s) => Math.round(s.getBoundingClientRect().width));
+    return { inside: btn.right <= c.right && btn.left >= c.left && btn.bottom <= c.bottom, right: list.left > main.right - 1 && list.right <= c.right, rows: document.querySelectorAll('.spc-reorder-items li').length,
+      imgs, icons, overflow: document.documentElement.scrollWidth > innerWidth, bg: getComputedStyle(document.querySelector('.spc-reorder')).backgroundColor, upper: getComputedStyle(document.querySelector('.spc-reorder-go')).textTransform };
   });
-  ok(card.thumbs.length === 2 && card.thumbs.every(Boolean) && card.more, 'the card shows the products\' pictures and "+2"');
-  ok(card.inside && card.row && !card.overflow, 'the button sits inside the card, beside the text, nothing spills out');
+  console.log('    card', JSON.stringify(card));
+  ok(card.rows === 5 && card.imgs.length === 2 && card.imgs.every(Boolean), 'the card lists the products (four and "1 more"), with their pictures');
+  ok(card.right && card.inside && !card.overflow, 'the list on the right, the button inside the card under the text, nothing spills out');
+  ok(card.icons.every((w) => w <= 20), 'the icons stay small (' + card.icons.join(', ') + ' px)');
   ok(card.bg === 'rgb(255, 255, 255)' && card.upper === 'uppercase', 'a white card, and the theme\'s own button (its uppercase kept)');
   if (SHOTS) { await p.locator('.wrap').screenshot({ path: SHOTS + '/reorder-card.png' }); }
-  await p.hover('.spc-reorder');
-  await p.waitForTimeout(400);
-  ok(await p.evaluate(() => getComputedStyle(document.querySelector('.spc-reorder')).transform !== 'none'), 'it lifts a little under the pointer');
+  // without the stylesheet (a stale combined CSS): still no giant icons
+  await p.evaluate(() => document.querySelector('link[href*="reorder.css"]').remove());
+  await p.waitForTimeout(200);
+  ok(await p.evaluate(() => Array.prototype.every.call(document.querySelectorAll('.spc-reorder svg'), (s) => s.getBoundingClientRect().width <= 20)), 'even with no stylesheet at all, the icons stay small');
   await p.close();
 
   // --- the card, on a phone
@@ -39,9 +45,9 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
   const phone = await p.evaluate(() => {
     const c = document.querySelector('.spc-reorder').getBoundingClientRect();
     const btn = document.querySelector('.spc-reorder-go').getBoundingClientRect();
-    return { overflow: document.documentElement.scrollWidth > innerWidth, wide: btn.width > c.width * 0.75, below: btn.top > document.querySelector('.spc-reorder-text').getBoundingClientRect().bottom - 1 };
+    return { overflow: document.documentElement.scrollWidth > innerWidth, wide: btn.width > c.width * 0.75, below: document.querySelector('.spc-reorder-items').getBoundingClientRect().top > btn.bottom - 1 };
   });
-  ok(!phone.overflow && phone.wide && phone.below, 'on a phone: one column, a full-width button under the text, no sideways scroll');
+  ok(!phone.overflow && phone.wide && phone.below, 'on a phone: one column, a full-width button, the list under it, no sideways scroll');
   if (SHOTS) { await p.locator('.wrap').screenshot({ path: SHOTS + '/reorder-card-phone.png' }); }
   await p.close();
 
@@ -66,6 +72,21 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
       w + ' px: each finished step shows its data under the title, lined up with its words');
     ok(!st[3].shown, w + ' px: the open step (payment) shows none');
     ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), w + ' px: nothing spills sideways');
+    const cl = await p.evaluate(() => {
+      const box = document.getElementById('spc-checkout-cart');
+      const col = document.querySelector('.cart-grid-right');
+      return box && { first: col.firstElementChild === box, rows: box.querySelectorAll('li').length, shown: Array.prototype.filter.call(box.querySelectorAll('li'), (l) => l.offsetHeight > 0).length,
+        head: box.querySelector('.spc-ccart-head').textContent, more: (box.querySelector('.spc-ccart-more') || {}).textContent, line: box.querySelector('li').textContent,
+        fits: box.getBoundingClientRect().right <= col.getBoundingClientRect().right + 1 };
+    });
+    ok(cl && cl.first && cl.rows === 9 && cl.shown === 5 && cl.head === 'W koszyku27 sztuk' && cl.more === 'Pokaż wszystkie (9)' && cl.fits, w + ' px: the cart\'s products at the top of the side column, five shown ' + JSON.stringify(cl));
+    ok(/Produkt 7.*2 × 10,00 zł.*20,00 zł/.test(cl.line), w + ' px: a line: name, quantity × price, total');
+    if (SHOTS) { await p.locator('.cart-grid-right').screenshot({ path: SHOTS + '/checkout-cart-' + w + '.png' }); }
+    await p.click('.spc-ccart-more');
+    ok(await p.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('#spc-checkout-cart li'), (l) => l.offsetHeight > 0).length === 9 && document.querySelector('.spc-ccart-more').textContent === 'Pokaż mniej'), w + ' px: "show all" opens the rest');
+    await p.evaluate(() => { const h = window.prestashop && window.prestashop._h && window.prestashop._h.updatedCart; (h || []).forEach((f) => f({})); });
+    await p.waitForTimeout(800);
+    ok(await p.evaluate(() => document.querySelector('#spc-checkout-cart li').textContent.indexOf('Kapusta kiszona') !== -1 && document.querySelector('.spc-ccart-count').textContent === '28 sztuk'), w + ' px: after the cart changed on the page, the list is asked for again');
     if (SHOTS) { await p.locator('section#checkout').screenshot({ path: SHOTS + '/checkout-summaries-' + w + '.png' }); }
     await p.close();
   }

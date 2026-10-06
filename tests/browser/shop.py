@@ -90,13 +90,14 @@ CHECKOUT_STEPS = [('personal-information', 'Dane osobowe'), ('addresses', 'Adres
 
 
 def checkout(done=0):
-    return ('<section id="checkout">' + ''.join(
+    return ('<section id="checkout"><div class="row"><div class="cart-grid-body">' + ''.join(
         '<section id="checkout-%s-step" class="checkout-step -reachable%s%s"><h1 class="step-title js-step-title h3">'
         '<i class="material-icons rtl-no-flip done">&#10003;</i><span class="step-number">%d</span> %s '
         '<span class="step-edit text-muted"><i class="material-icons edit">&#9998;</i> edytuj</span></h1><div class="content">krok %d</div></section>' % (
             s, ' -complete' if i < done else '', ' -current' if i == done else '', i + 1, name, i + 1)
         for i, (s, name) in enumerate(CHECKOUT_STEPS))
-        + '<div id="payment-confirmation"><button type="submit">Zamawiam i płacę</button></div></section>')
+        + '<div id="payment-confirmation"><button type="submit">Zamawiam i płacę</button></div></div>'
+        '<div class="cart-grid-right"><div class="spc-other-box">Dopełnij paczkę</div><div class="card" id="js-checkout-summary">18 sztuk · pokaż szczegóły</div></div></div></section>')
 
 
 CHECKOUT = checkout(0)
@@ -110,7 +111,10 @@ THEME_CSS = ('body{margin:0;background:#f6f6f6;font:16px/1.5 Manrope,"Noto Sans"
              '.step-title{margin:0;font-size:1.6rem;font-weight:500;text-transform:uppercase}.step-title .done{color:#4cbb6c;margin-right:14px;display:none}'
              '.checkout-step.-complete .step-title .done{display:inline-block}.checkout-step.-complete .step-number{display:none}'
              '.step-number{display:inline-block;width:2.4rem;height:2.4rem;line-height:2.4rem;border-radius:50%;background:#4cbb6c;color:#fff;text-align:center;margin-right:14px;font-size:1.1rem}'
-             '.step-edit{float:right;font-size:1rem;text-transform:none}.checkout-step:not(.-current) .content{display:none}')
+             '.step-edit{float:right;font-size:1rem;text-transform:none}.checkout-step:not(.-current) .content{display:none}'
+             '#checkout>.row{display:flex;gap:30px;align-items:flex-start}.cart-grid-body{flex:2}.cart-grid-right{flex:1}'
+             '.spc-other-box,#js-checkout-summary{background:#fff;padding:18px;margin-bottom:16px}'
+             '@media(max-width:767px){#checkout>.row{flex-direction:column}.cart-grid-right{width:100%}}')
 
 
 def body_of(path):
@@ -145,8 +149,9 @@ def page(path, mode, query=''):
     q = dict(urllib.parse.parse_qsl(query))
     if kind == 'checkout' and q.get('summary') and os.environ.get('CHECKOUT_JSON'):
         add += ('<style>%s</style><link rel="stylesheet" href="/modules/speedpackcore/views/css/checkout-summary.css">'
-                '<script>window.spcCheckout=%s</script><script src="/modules/speedpackcore/views/js/checkout-summary.js" defer></script>') % (
-            THEME_CSS, open(os.environ['CHECKOUT_JSON'], encoding='utf-8').read())
+                '<script>window.spcCheckout=%s;window.spcCheckoutCart=%s</script><script src="/modules/speedpackcore/views/js/checkout-summary.js" defer></script>') % (
+            THEME_CSS, open(os.environ['CHECKOUT_JSON'], encoding='utf-8').read(),
+            open(os.environ['CHECKOUT_CART_JSON'], encoding='utf-8').read() if os.environ.get('CHECKOUT_CART_JSON') else 'null')
     extra = checkout(int(q.get('done', 0))) if kind == 'checkout' else ('<section id="product-search-no-matches">Brak wyników</section>' if kind == 'search' else '')
     return ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>'
             '<style>#header a{margin:8px;display:inline-block}.card{display:inline-block;margin:6px}#menu-icon{display:none}'
@@ -178,6 +183,17 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get('Content-Length') or 0))
+        if self.path.startswith('/__qty'):
+            # InstantCart's / AsyncCart's quantity endpoint: the shop's answer for the new quantity
+            q = dict(urllib.parse.parse_qsl(raw.decode(errors='replace'))) if b'=' in raw and b'Content-Disposition' not in raw else {}
+            if not q:
+                for chunk in raw.split(b'--'):
+                    if b'name="' in chunk:
+                        q[chunk.split(b'name="')[1].split(b'"')[0].decode()] = chunk.split(b'\r\n\r\n', 1)[1].rsplit(b'\r\n', 1)[0].decode()
+            n = int(q.get('qty', 1))
+            ans = {'ok': True, 'error': '', 'quantity': n, 'line': '%d,00 zł' % (n * 10), 'count': n, 'label': '%d sztuk' % n,
+                   'totals': {'products': '%d,00 zł' % (n * 10), 'discount': '', 'shipping': 'Za darmo!', 'total': '%d,00 zł' % (n * 10)}, 'rules': False}
+            return self.send(json.dumps(ans), 'application/json')
         if self.path.startswith('/__collect'):
             try:
                 COLLECT.append(json.loads(raw.decode()))
@@ -235,6 +251,12 @@ class H(http.server.BaseHTTPRequestHandler):
             BHQ.append(q)
             data = json.load(open(os.environ['BH_REPORT'], encoding='utf-8'))
             return self.send(json.dumps(data['session'] if q.get('op') == 'session' else data['report']), 'application/json')
+        if p == '/__cartlist':
+            # the cart after a change: one line more
+            data = json.load(open(os.environ['CHECKOUT_CART_JSON'], encoding='utf-8'))
+            data['items'] = [{'name': 'Kapusta kiszona', 'attrs': '', 'qty': 1, 'unit': '15,00 zł', 'total': '15,00 zł', 'src': ''}] + data['items']
+            data['countText'] = '28 sztuk'
+            return self.send(json.dumps(data), 'application/json')
         if p == '/bo-order' or p == '/bo-cart':
             # a back-office page as PrestaShop draws it: the order page with the panel from its hook,
             # the cart page (old layout or the new one) with the panel sent along with the head
@@ -253,6 +275,28 @@ class H(http.server.BaseHTTPRequestHandler):
                 body = ('<div id="main-div"><div class="header-toolbar">Koszyk</div><div class="content-div"><div class="container-fluid">%s</div></div></div>' % cart.replace('panel', 'card')) if q.get('layout') == 'new' \
                     else ('<div class="page-head">Koszyk</div><div id="content" class="bootstrap"><div class="row">%s</div></div>' % cart)
             return self.send('<!doctype html><html><head><meta charset="utf-8"><style>%s</style>%s</head><body>%s</body></html>' % (bo, head, body), 'text/html; charset=utf-8')
+        if p == '/ic-cart':
+            # Classic's cart page: a line with its quantity spinner, and the summary whose shipping
+            # line has a second, small .value (displayCheckoutSubtotalDetails) under the price
+            which = dict(urllib.parse.parse_qsl(u.query)).get('script', 'instantcart')
+            cfg = ('<script>window.instantcart={"url":"/__add","cartUrl":"/pl/koszyk","notify":0,"removeUrl":"","qtyUrl":"/__qty","t":{}}</script>'
+                   '<script src="/modules/speedpackcore/views/js/instantcart.js"></script>') if which == 'instantcart' else \
+                  ('<script>window.asyncCart={"qtyUrl":"/__qty","removeUrl":"","delay":200,"notify":0,"t":{}}</script>'
+                   '<script src="/asynccart/views/js/asynccart.js"></script>')
+            body = ('<div class="cart-grid"><ul class="cart-items"><li class="cart-item"><div class="product-line-grid">'
+                    '<div class="product-line-info"><a class="label">Zestaw</a></div>'
+                    '<input class="js-cart-line-product-quantity" type="number" value="1" min="1" data-up-url="/pl/koszyk?update=1&id_product=7&id_product_attribute=0&token=x" data-product-id="7">'
+                    '<span class="bootstrap-touchspin-up">+</span><div class="product-line-grid-right"><span class="product-price"><strong>10,00 zł</strong></span></div>'
+                    '</div></li></ul></div>'
+                    '<div class="cart-detailed-totals"><div class="cart-summary-line" id="cart-subtotal-products"><span class="label js-subtotal">1 sztuka</span><span class="value">10,00 zł</span></div>'
+                    '<div class="cart-summary-line" id="cart-subtotal-shipping"><span class="label">Wysyłka</span><span class="value">Za darmo!</span>'
+                    '<div><small class="value">Dostawa w 2 dni</small></div></div>'
+                    '<div class="cart-summary-line cart-total"><span class="label">Razem</span><span class="value">10,00 zł</span></div></div>')
+            return self.send('<!doctype html><html><head><meta charset="utf-8"></head><body id="cart"><span class="cart-products-count">(1)</span>%s<script>window.prestashop={static_token:"x",on:function(){},emit:function(){}}</script>%s</body></html>' % (body, cfg), 'text/html; charset=utf-8')
+        if p.startswith('/asynccart/'):
+            f = os.path.join(os.path.dirname(MOD), p.lstrip('/'))
+            if os.path.isfile(f):
+                return self.send(open(f, 'rb').read(), 'application/javascript')
         if p == '/reorder-card':
             card = open(os.environ['REORDER_HTML'], encoding='utf-8').read()
             # the shop's images of the test order: grey squares with the product's initial

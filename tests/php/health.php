@@ -52,7 +52,7 @@ class Order
     static function getIdByCartId($idCart) { return (int) array_search($idCart, self::$carts); }
 }
 class HealthLocale { function formatPrice($a, $iso) { return number_format($a, 2, ',', ' ') . ' zł'; } }
-class Media { static function addJsDef($a) {} }
+class Media { static $cleared = 0; static function clearCache() { self::$cleared++; } static function addJsDef($a) {} }
 class Ctl { public $php_self = 'index'; public $js = []; function addJS($p) { $this->js[] = $p; } function addCSS($p) { $this->js[] = $p; } function registerJavascript($i, $p, $o = []) {} function registerStylesheet($i, $p, $o = []) {} }
 class ShopObj { public $id = 1, $id_shop_group = 1, $theme_name = 'classic'; function getBaseURL($ssl = true) { return $GLOBALS['BASE'] . '/'; } }
 class Context

@@ -34,7 +34,7 @@ class SpcReorder extends SpcFeature
     public const K_SUMMARY = 'SPC_RO_SUMMARY';
 
     /** product lines shown on the card */
-    public const SHOWN = 3;
+    public const SHOWN = 4;
 
     public function install()
     {
@@ -282,6 +282,7 @@ class SpcReorder extends SpcFeature
             'date' => Tools::displayDate($order['date_add']),
             'total' => self::money($context, (float) $order['total'], $currency->iso_code ?: $context->currency->iso_code),
             'lines' => array_slice($names, 0, self::SHOWN),
+            'list' => self::listed($context, $order['lines']),
             'more' => max(0, count($names) - self::SHOWN),
             'count' => count($names),
             'items' => array_sum(array_column($order['lines'], 'quantity')),
@@ -338,18 +339,58 @@ class SpcReorder extends SpcFeature
     }
 
     /** Cover pictures of the first products of the order (small size), for the card. */
+    /** The cart's products for the top of the checkout: picture, name, options, quantity, total. */
+    public static function cartList($context)
+    {
+        $cart = $context->cart;
+        $out = ['items' => [], 'count' => 0, 'countText' => ''];
+        if (!Validate::isLoadedObject($cart)) {
+            return $out;
+        }
+        $tax = SpcCartAnswer::withTax($cart);
+        $type = ImageType::getFormattedName('cart');
+        foreach ($cart->getProducts(true) as $p) {
+            $qty = (int) $p['cart_quantity'];
+            $out['items'][] = [
+                'name' => (string) $p['name'],
+                'attrs' => isset($p['attributes_small']) ? (string) $p['attributes_small'] : '',
+                'qty' => $qty,
+                'unit' => SpcCartAnswer::price($context, (float) ($tax ? $p['price_wt'] : $p['price'])),
+                'total' => SpcCartAnswer::price($context, (float) ($tax ? $p['total_wt'] : $p['total'])),
+                'src' => !empty($p['id_image']) && strpos((string) $p['id_image'], '-') !== false && substr((string) $p['id_image'], -2) !== '-0'
+                    ? $context->link->getImageLink((string) $p['link_rewrite'], (string) $p['id_image'], $type) : '',
+            ];
+            $out['count'] += $qty;
+        }
+        $out['countText'] = SpcCartAnswer::itemsLabel($context, $out['count']);
+
+        return $out;
+    }
+
+    /** The first products of the order for the card's list: picture, name, quantity. */
+    protected static function listed($context, array $lines)
+    {
+        $pictures = self::thumbs($context, $lines);
+        $out = [];
+        foreach (array_slice($lines, 0, self::SHOWN) as $i => $line) {
+            $out[] = ['name' => $line['name'], 'qty' => (int) $line['quantity'], 'src' => isset($pictures[$i]) ? $pictures[$i]['src'] : ''];
+        }
+
+        return $out;
+    }
+
     protected static function thumbs($context, array $lines)
     {
         $idShop = (int) $context->shop->id;
         $idLang = (int) $context->language->id;
         $type = ImageType::getFormattedName('small');
         $out = [];
-        foreach (array_slice($lines, 0, self::SHOWN) as $line) {
+        foreach (array_slice($lines, 0, self::SHOWN) as $i => $line) {
             $row = Db::getInstance()->getRow('SELECT i.id_image, pl.link_rewrite FROM `' . _DB_PREFIX_ . 'image_shop` i
                 INNER JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON (pl.id_product = i.id_product AND pl.id_lang = ' . $idLang . ' AND pl.id_shop = ' . $idShop . ')
                 WHERE i.id_product = ' . (int) $line['id_product'] . ' AND i.id_shop = ' . $idShop . ' AND i.cover = 1');
             if ($row) {
-                $out[] = ['src' => $context->link->getImageLink($row['link_rewrite'], (int) $line['id_product'] . '-' . (int) $row['id_image'], $type), 'alt' => $line['name']];
+                $out[$i] = ['src' => $context->link->getImageLink($row['link_rewrite'], (int) $line['id_product'] . '-' . (int) $row['id_image'], $type), 'alt' => $line['name']];
             }
         }
 
@@ -384,7 +425,12 @@ class SpcReorder extends SpcFeature
             Media::addJsDef(['spcCheckout' => self::summaries($this->context, [
                 'invoice' => $this->l('invoice: %s'),
                 'free' => $this->l('free'),
-            ])]);
+            ]), 'spcCheckoutCart' => self::cartList($this->context) + [
+                'url' => $this->context->link->getModuleLink($this->name, 'cartlist', [], true),
+                'title' => $this->l('In your cart'),
+                'more' => $this->l('Show all (%d)'),
+                'less' => $this->l('Show fewer'),
+            ]]);
             $controller->registerJavascript('spc-checkout', 'modules/' . $this->name . '/views/js/checkout-summary.js', ['position' => 'bottom', 'priority' => 200, 'attributes' => 'defer']);
             $controller->registerStylesheet('spc-checkout', 'modules/' . $this->name . '/views/css/checkout-summary.css', ['media' => 'all', 'priority' => 150]);
         }

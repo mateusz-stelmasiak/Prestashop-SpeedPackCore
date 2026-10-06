@@ -44,6 +44,9 @@ class SpeedPackCore extends Module
     /** the version whose settings page was last opened: a new one runs the speed audit by itself */
     public const K_SEEN = 'SPC_SEEN_VERSION';
 
+    /** the version whose stylesheets and scripts the shop's combined files were made from */
+    public const K_ASSETS = 'SPC_ASSETS_VERSION';
+
     /** opt-in: a small visible credit in the shop footer, and a section in the shop's llms.txt */
     public const K_CREDIT = 'SPC_CREDIT';
     public const K_LLMS = 'SPC_LLMS';
@@ -82,7 +85,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.6.1';
+        $this->version = '1.6.2';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -147,7 +150,7 @@ class SpeedPackCore extends Module
             }
         }
         Configuration::deleteByName(self::K_CARTSPEED);
-        foreach ([SpcAudit::K_KEY, SpcAudit::K_HISTORY, SpcAudit::K_DONE, self::K_SEEN, self::K_CREDIT, self::K_LLMS] as $key) {
+        foreach ([SpcAudit::K_KEY, SpcAudit::K_HISTORY, SpcAudit::K_DONE, self::K_SEEN, self::K_ASSETS, self::K_CREDIT, self::K_LLMS] as $key) {
             Configuration::deleteByName($key);
         }
 
@@ -189,6 +192,7 @@ class SpeedPackCore extends Module
         // a second chance for a shop upgraded without visiting the settings page (the dispatcher
         // hook not registered yet): still before the page's content is built
         SpcAudit::apply();
+        $this->assetsUpdated();
         foreach ($this->parts() as $id => $part) {
             if (!SpcAudit::off($id)) {
                 $part->hookActionFrontControllerSetMedia();
@@ -269,6 +273,7 @@ class SpeedPackCore extends Module
         if ($this->autoAudit) {
             Configuration::updateValue(self::K_SEEN, $this->version);
         }
+        $this->assetsUpdated();
         foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews', 'actionValidateOrder', 'displayFooter', 'displayLlmsTxt'] as $hook) {
             if (!$this->isRegisteredInHook($hook)) {
                 $this->registerHook($hook);
@@ -336,6 +341,25 @@ class SpeedPackCore extends Module
         unset($parts['behaviour']);
 
         return $parts;
+    }
+
+    /**
+     * After an update: PrestaShop's combined CSS and JS are made again (they are named after
+     * the list of files, not their content, so a changed stylesheet would not reach the shop),
+     * and the page cache goes (its pages name the old combined files). Once per version.
+     */
+    public function assetsUpdated()
+    {
+        if (Configuration::get(self::K_ASSETS) === $this->version) {
+            return false;
+        }
+        Configuration::updateValue(self::K_ASSETS, $this->version);
+        Media::clearCache();
+        if (class_exists('SpcPageCache')) {
+            SpcPageCache::flush();
+        }
+
+        return true;
     }
 
     /** The marker that starts a tab's section ('' ends the last one). */

@@ -61,7 +61,7 @@
     return els.length > 0;
   }
   function pendingTotals(on) {
-    Array.prototype.forEach.call(document.querySelectorAll('.cart-summary-line .value, .cart-total .value, .js-subtotal'), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll('.cart-summary-line > .value, .cart-total > .value, .js-subtotal'), function (el) {
       el.classList.toggle('ac-pending', on);
     });
   }
@@ -70,10 +70,10 @@
     var t = res.totals;
     if (!t) return false;
     if (res.label) setText('.js-subtotal', res.label);
-    var found = setText('#cart-subtotal-products .value', t.products);
-    setText('#cart-subtotal-shipping .value', t.shipping);
-    if (t.discount) setText('#cart-subtotal-discount .value', t.discount);
-    return setText('.cart-summary-totals .cart-total .value, .cart-detailed-totals .cart-total .value', t.total) && found;
+    var found = setText('#cart-subtotal-products > .value', t.products);
+    setText('#cart-subtotal-shipping > .value', t.shipping);
+    if (t.discount) setText('#cart-subtotal-discount > .value', t.discount);
+    return setText('.cart-summary-totals .cart-total > .value, .cart-detailed-totals .cart-total > .value', t.total) && found;
   }
   // vouchers came or went, the cart emptied, or the theme is unusual: let the theme re-render
   function settle(res, line) {
