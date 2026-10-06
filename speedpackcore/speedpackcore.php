@@ -28,6 +28,10 @@ require_once dirname(__FILE__) . '/classes/SpcCache.php';
 require_once dirname(__FILE__) . '/classes/SpcInstantCart.php';
 require_once dirname(__FILE__) . '/classes/SpcInstantNav.php';
 require_once dirname(__FILE__) . '/classes/SpcSmartPrefetch.php';
+require_once dirname(__FILE__) . '/classes/SpcHealth.php';
+require_once dirname(__FILE__) . '/classes/SpcCare.php';
+require_once dirname(__FILE__) . '/classes/SpcWeight.php';
+require_once dirname(__FILE__) . '/classes/SpcDiagnostics.php';
 
 class SpeedPackCore extends Module
 {
@@ -48,11 +52,14 @@ class SpeedPackCore extends Module
     /** @var SpcInstantCart */
     private $instantCart;
 
+    /** @var SpcDiagnostics the health check: on the settings page only, never on the shop */
+    private $diagnostics;
+
     public function __construct()
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.2.1';
+        $this->version = '1.3.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -69,6 +76,7 @@ class SpeedPackCore extends Module
         $this->smartPrefetch = new SpcSmartPrefetch($this, $this->context, 'SmartPrefetch');
         $this->instantNav = new SpcInstantNav($this, $this->context, 'InstantNav');
         $this->instantCart = new SpcInstantCart($this, $this->context, 'InstantCart');
+        $this->diagnostics = new SpcDiagnostics($this, $this->context, $this->l('Health check'));
     }
 
     /** @return SpcFeature[] by id */
@@ -165,6 +173,9 @@ class SpeedPackCore extends Module
         if (Tools::getValue('spc_ajax') === 'warmup') {
             $this->cache->ajaxWarmup();
         }
+        if (in_array(Tools::getValue('spc_ajax'), ['care_scan', 'care', 'analyze', 'weight'], true)) {
+            $this->diagnostics->ajax((string) Tools::getValue('spc_ajax'));
+        }
         if (Tools::getValue('spc_ajax') === 'audit') {
             $this->ajaxAudit((string) Tools::getValue('step'));
         }
@@ -193,6 +204,8 @@ class SpeedPackCore extends Module
         }
         $sections[] = ['id' => 'cartspeed', 'title' => 'CartSpeed'];
         $body .= $this->cartSpeedForm();
+        $sections[] = ['id' => 'diagnostics', 'title' => $this->diagnostics->displayName];
+        $body .= $this->diagnostics->getContent();
         $this->context->smarty->assign(['spc' => [
             'version' => $this->version,
             'twice' => implode(', ', $twice),

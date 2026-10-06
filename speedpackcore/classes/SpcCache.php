@@ -299,6 +299,17 @@ class SpcCache extends SpcFeature
             $this->l('On this server') => implode(' · ', $offer),
         ];
 
+        // the guide's rule of thumb: with the MySQL query cache on (MySQL 5.7, MariaDB), a data
+        // cache on the same machine gains less – the speed audit measures how much
+        $qc = [];
+        foreach ((array) Db::getInstance()->executeS('SHOW VARIABLES LIKE \'query_cache_%\'') as $v) {
+            if (isset($v['Variable_name'], $v['Value'])) {
+                $qc[Tools::strtolower($v['Variable_name'])] = $v['Value'];
+            }
+        }
+        $qcOn = isset($qc['query_cache_type']) && !in_array(Tools::strtoupper($qc['query_cache_type']), ['OFF', '0'], true) && !empty($qc['query_cache_size']);
+        $rows[$this->l('Database query cache')] = !isset($qc['query_cache_type']) ? $this->l('not in this MySQL version') : ($qcOn ? $this->l('On') : $this->l('Off'));
+
         $stats = $backend !== SpcCacheBackend::OFF ? SpcCacheBackend::stats($this->redisSettings()) : null;
         if ($stats) {
             $asked = $stats['hits'] + $stats['misses'];
@@ -318,6 +329,9 @@ class SpcCache extends SpcFeature
         }
 
         $notes = SpcOpcache::advice($opcache, $this->module);
+        if ($qcOn) {
+            $notes[] = ['level' => 'info', 'text' => $this->l('The database keeps its own query cache, so a data cache here gains less than usual. The speed audit at the top of this page measures how much it still saves on this shop.')];
+        }
         if ($backend !== SpcCacheBackend::OFF && !isset(SpcCacheBackend::$classes[$backend])) {
             $notes[] = ['level' => 'info', 'text' => sprintf($this->l('The shop uses %s, chosen on the Performance page. Choosing a data cache below replaces it.'), $backend)];
         }

@@ -299,7 +299,7 @@ class SpcAudit
      * One request to the shop as a first-time visitor would make it, with the audit cookie.
      * $jar keeps the visitor's cookies between requests; $post makes it a form POST.
      */
-    protected static function request($url, $token, array &$jar = [], ?array $post = null)
+    public static function request($url, $token, array &$jar = [], ?array $post = null)
     {
         if (!function_exists('curl_init')) {
             return ['ok' => false, 'error' => 'the server has no cURL'];

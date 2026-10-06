@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.2.1.zip"><img alt="Download 1.2.1" src="https://img.shields.io/badge/download-speedpackcore--1.2.1.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.3.0.zip"><img alt="Download 1.3.0" src="https://img.shields.io/badge/download-speedpackcore--1.3.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.2.1" src="https://img.shields.io/badge/version-1.2.1-17201e">
+  <img alt="Version 1.3.0" src="https://img.shields.io/badge/version-1.3.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -25,6 +25,7 @@
 | **InstantNav** | The white flash between pages | **0** white screens; the header never reloads |
 | **InstantCart** | Waiting after "Add to cart" and +/− | **20 clicks → 1 request** (4.75 s → 1.73 s on a slow server) |
 | **CartSpeed** | Repeated queries on the cart page | **73 → 4** address lookups per cart page |
+| **Health check** | Slow settings nobody looked at | PrestaShop's own tuning guide, **checked on your server**, plus database care |
 
 <sub>InstantCart and CartSpeed figures were measured on the Alhambra shop. SmartPrefetch and InstantNav figures are the modules' default settings. The built-in **speed audit** measures all five on your own shop. Full numbers in [Benchmarks](#benchmarks).</sub>
 
@@ -107,6 +108,25 @@
 - PrestaShop checks "does this address exist?" for every price and tax in the cart; CartSpeed remembers the answer for the rest of the page
 - 73 identical queries → 4 on one cart page (measured), with an on/off switch
 
+### Health check – PrestaShop's tuning guide, checked on your shop · *new in 1.3*
+
+<img src="media/health-check.png" alt="Health check: server, database, lines for the host, database care and module weight" width="100%">
+
+<sub>The health check as it renders; the database-care and module-weight numbers in this picture are sample data.</sub>
+
+PrestaShop's [optimization guide](https://devdocs.prestashop-project.org/9/scale/optimizations/) is a list of settings to look up by hand. The health check reads them from the running shop and says, in green, amber or red, what to change and why:
+
+- **PHP:** version, PHP-FPM or mod_php, `memory_limit`, `max_input_vars`, upload sizes, `display_errors`, `session.auto_start`, and the realpath cache **with how full it actually is** (better than the guide's fixed 4096K); OPcache's interned-strings buffer (with its fill) and `revalidate_freq`, on top of the OPcache panel the Cache section already had
+- **PrestaShop:** debug mode and the profiler (both common on live shops, both slow), template compilation, the template cache, multi-front optimizations (one click to switch off on a single server), media servers / CDN, the Composer autoloader
+- **Database:** server version, **`innodb_buffer_pool_size` against the real size of your tables** (the guide's most important setting), temporary tables (with the share that went to disk), `table_open_cache`, `performance_schema`, the query cache, and MyISAM tables left over
+- **For your host:** the `php.ini` and `my.cnf` lines for every failing check, worked out for this shop (the buffer pool sized from your database), with a Copy button – a module cannot change them, the host can
+- **Analyze tables:** `ANALYZE TABLE` on every table of the shop in small batches (the guide's `mysqlcheck -a`), so MySQL picks the right indexes
+- **Database care** (the guide's *Taking care of PrestaShop*): the back-office log, visit statistics, abandoned guest carts, orphaned guest records, 404 and search statistics and the e-mail log – each with its size, how much is older than its age, and a Clean button that works in batches. Nothing younger than a week is touched, **orders and customer carts never are**, and a guest is only removed when no visit, cart or account points to it and it is older than every visit kept
+- **The configuration table**, which PrestaShop loads whole on every request: its size and its largest values (a module keeping data there, or left behind by one)
+- **Module weight:** for each module, the front-office hooks it runs on and the CSS / JS files and bytes it adds to the home page and a product page, fetched as a first-time visitor gets them – the heavy ones flagged
+
+Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fast_shutdown` no longer exist, MySQL 8 has no query cache (so the guide's "skip the data cache when MySQL is local" only holds on old servers – the Cache section now shows whether yours has one, and the speed audit measures the real gain), and PrestaShop 9 has no Smarty "caching type" any more.
+
 ## Also in the pack: AsyncCart
 
 <img src="media/asynccart-logo.png" alt="" width="64" align="left">
@@ -176,7 +196,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.2.1.zip](dist/speedpackcore-1.2.1.zip)**.
+1. Download **[speedpackcore-1.3.0.zip](dist/speedpackcore-1.3.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: each part has a status panel, its settings and its switch. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -198,7 +218,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 | **Overrides** | `Address::addressExists()`, installed and removed with the module. With Redis on, the module also writes `override/classes/cache/CacheRedis.php` |
 | **Files it changes** | With a data cache on, `app/config/parameters.php` (cache entries only; the original is kept as `parameters.php.speedpackcore.bak`) |
 | **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints) |
-| **Database** | No new tables; its configuration values are all removed on uninstall |
+| **Database** | No new tables; its configuration values are all removed on uninstall. The health check reads `SHOW VARIABLES`, `SHOW GLOBAL STATUS` and `information_schema`; it only writes when you press Clean or Analyze |
 | **Privacy** | No personal data stored by the module, and no cookies for shoppers. The speed audit sets one signed `spc_audit` cookie in the admin's own browser for the duration of the audit. In the browser: two `sessionStorage` keys and a cache of shop pages kept 60 seconds, separate for each signed-in shopper |
 | **Requirements** | Chrome and Edge need nothing more. Other browsers use the service worker: HTTPS, and the `Service-Worker-Allowed` header that the module's `.htaccess` sends on Apache and LiteSpeed. The speed audit needs cURL on the server and the shop on the same address as the back office for its click test. The Redis, APCu or Memcached PHP extension for the data cache. Plain JavaScript, about 22 KB gzipped in total |
 
@@ -219,8 +239,9 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **InstantCart :** ajout, suppression et changement de quantité immédiats ; 20 clics rapides = 1 requête.
 - **CartSpeed :** 73 requêtes identiques → 4 sur une page panier.
 - **Audit de vitesse :** chaque partie mesurée avec et sans SpeedPack sur votre boutique, en une minute environ.
+- **Contrôle de santé :** le guide d'optimisation de PrestaShop vérifié sur votre serveur (PHP, base de données, réglages), les lignes à envoyer à l'hébergeur, le nettoyage de la base et le poids de chaque module.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.2.1.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.3.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -234,8 +255,9 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **InstantCart:** dodawanie, usuwanie i zmiana ilości od razu; 20 szybkich kliknięć = 1 zapytanie.
 - **CartSpeed:** 73 identyczne zapytania → 4 na stronie koszyka.
 - **Audyt szybkości:** każda część zmierzona ze SpeedPack i bez niego w Twoim sklepie, w około minutę.
+- **Kontrola:** poradnik optymalizacji PrestaShop sprawdzony na Twoim serwerze (PHP, baza danych, ustawienia), gotowe linie dla hostingu, porządki w bazie i waga każdego modułu.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.2.1.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.3.0.zip`, potem Konfiguruj.
 </details>
 
 ---

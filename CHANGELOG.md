@@ -1,5 +1,15 @@
 # Changelog
 
+## SpeedPack Core 1.3.0
+
+**Health check**, a new section built from PrestaShop's optimization guide (Scale > Optimizations and Taking care of PrestaShop), read from the running shop:
+- Server and PrestaShop: PHP version and SAPI, memory, input vars, upload sizes, realpath cache with its real fill, display_errors, session.auto_start, OPcache interned strings and revalidate_freq; debug mode, profiler, template compilation and cache, multi-front optimizations (one-click off), media servers, Composer autoloader.
+- Database: version, buffer pool against the real table size, temporary tables (and how many went to disk), table_open_cache, performance_schema, query cache, MyISAM leftovers; ANALYZE TABLE in batches.
+- The php.ini / my.cnf lines for the host, worked out for this shop, with a Copy button.
+- Database care: log, visit statistics, abandoned guest carts, orphaned guests, 404 / search statistics, e-mail log – sizes, a preview count and batched cleanup; never younger than a week, never orders or customer carts. The configuration table's size and largest values.
+- Module weight: front-office hooks and the CSS / JS each module adds to the home and product pages.
+- The Cache section shows whether the database has a query cache.
+
 ## SpeedPack Core 1.2.1
 
 Security fix from a code scan of InstantNav's content swap:

@@ -1,0 +1,26 @@
+/**
+ * SpeedPack Core - Health check.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-diag .spc-tally { float: right; font-weight: 600; text-transform: none; }
+.spc-diag .spc-tally .spc-dot { margin-left: 12px; }
+.spc-diag .spc-dot { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; background: #c7d2d6; vertical-align: middle; }
+.spc-diag .spc-dot.spc-ok { background: #2e8b57; }
+.spc-diag .spc-dot.spc-warning { background: #e0a100; }
+.spc-diag .spc-dot.spc-problem { background: #c0392b; }
+.spc-diag .spc-dot.spc-info { background: #25b9d7; }
+.spc-diag .spc-checks td { vertical-align: top; }
+.spc-diag .spc-checks td:first-child { width: 22px; }
+.spc-diag .spc-fix { max-width: 520px; color: #6c868e; font-size: 12px; }
+.spc-diag .spc-row-problem td { background: #fdf2f0; }
+.spc-diag .spc-inline { display: inline; margin-left: 8px; }
+.spc-diag .spc-host { width: 100%; font-family: monospace; font-size: 12px; background: #f8f9fa; }
+.spc-diag .spc-days { width: 74px; display: inline-block; }
+.spc-diag .spc-care td { vertical-align: middle; }
+.spc-diag .spc-item-say { margin-top: 4px; font-size: 12px; color: #6c868e; }
+.spc-diag .spc-weight td.num, .spc-diag .spc-weight th.num { text-align: right; }
+.spc-diag .spc-weight small { color: #6c868e; }
+.spc-diag .spc-weight tr.is-heavy td { background: #fff8e6; }
