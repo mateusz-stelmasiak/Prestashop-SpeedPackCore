@@ -14,11 +14,11 @@ trap cleanup EXIT
 pass=0; fail=0; skip=0; FAILED=()
 step() { # name, command...
   local name=$1; shift
-  printf '%-40s' "$name"
+  printf "%-42s' "$name"
   if "$@" >"$WORK/out" 2>&1 && ! grep -q '^FAIL' "$WORK/out"; then echo ok; pass=$((pass+1))
   else echo FAIL; fail=$((fail+1)); FAILED+=("$name"); sed 's/^/    /' "$WORK/out" | tail -40; fi
 }
-skipped() { printf '%-40s%s\n' "$1" "skipped ($2)"; skip=$((skip+1)); }
+skipped() { printf "%-42s%s\n' "$1" "skipped ($2)"; skip=$((skip+1)); }
 port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
 serve() { # port, command... : start a server and wait until it answers
   local p=$1; shift
@@ -55,8 +55,10 @@ else fail=$((fail+1)); FAILED+=("audit mock shop"); fi
 DB=0
 if php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' && php -r 'try { new PDO(getenv("SPC_DB_DSN") ?: "mysql:host=localhost;dbname=spctest", getenv("SPC_DB_USER") ?: "lp", getenv("SPC_DB_PASS") ?: "lp"); } catch (Exception $e) { exit(1); }' 2>/dev/null; then
   WP=$(port)
+  export SPC_JOURNEY_HTML="$WORK/journey.html" SPC_JOURNEY_CART_HTML="$WORK/journey-cart.html"
   serve "$WP" php -S "127.0.0.1:$WP" "$T/php/mock/weight-shop.php" && step "php: health check (MariaDB)" php php/health.php "$WP"
   step "php: Behaviour (MariaDB)" php php/behaviour.php
+  export SPC_REORDER_HTML="$WORK/reorder.html" SPC_CHECKOUT_JSON="$WORK/checkout.json"
   step "php: Reorder (MariaDB)" php php/reorder.php
   DB=1
 else skipped "php: health check, Behaviour (MariaDB)" "no database, see README"; fi
@@ -74,6 +76,12 @@ if command -v node >/dev/null && node -e "require('$PW')" 2>/dev/null && [ -f "$
     export BH_ADMIN="$WORK/bh.html" BH_REPORT="$SPC_BH_REPORT"
   fi
   B=$(port); serve "$B" python3 browser/shop.py "$B" "$MOD" "$WORK/admin.html" && step "browser: Behaviour (shop and tab)" node browser/behaviour.e2e.js "$B"
+  if [ -f "${SPC_REORDER_HTML:-}" ]; then
+    R=$(port); REORDER_HTML="$SPC_REORDER_HTML" CHECKOUT_JSON="$SPC_CHECKOUT_JSON" serve "$R" python3 browser/shop.py "$R" "$MOD" "$WORK/admin.html" && step "browser: Reorder card, checkout summaries" node browser/reorder.e2e.js "$R"
+  fi
+  if [ -f "${SPC_JOURNEY_HTML:-}" ]; then
+    J=$(port); JOURNEY_HTML="$SPC_JOURNEY_HTML" JOURNEY_CART_HTML="$SPC_JOURNEY_CART_HTML" serve "$J" python3 browser/shop.py "$J" "$MOD" "$WORK/admin.html" && step "browser: path on orders and carts" node browser/journey.e2e.js "$J"
+  fi
   if [ $DB = 1 ] && [ -f "$SPC_BH_MESSAGES" ]; then step "php: Behaviour, browser messages stored" php php/behaviour-replay.php "$SPC_BH_MESSAGES"; fi
 else skipped "browser tests" "no node/playwright (set SPC_PLAYWRIGHT) or no audit vars"; fi
 

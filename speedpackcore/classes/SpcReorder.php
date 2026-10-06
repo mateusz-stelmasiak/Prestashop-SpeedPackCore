@@ -30,6 +30,9 @@ class SpcReorder extends SpcFeature
     public const K_ACCOUNT = 'SPC_RO_ACCOUNT';
     public const K_PAYMENT = 'SPC_RO_PAYMENT';
 
+    /** on every checkout: what each finished step holds, next to its title */
+    public const K_SUMMARY = 'SPC_RO_SUMMARY';
+
     /** product lines shown on the card */
     public const SHOWN = 3;
 
@@ -41,6 +44,7 @@ class SpcReorder extends SpcFeature
             && Configuration::updateValue(self::K_CART, 1)
             && Configuration::updateValue(self::K_ACCOUNT, 1)
             && Configuration::updateValue(self::K_PAYMENT, 1)
+            && Configuration::updateValue(self::K_SUMMARY, 1)
             && $this->registerHooks();
     }
 
@@ -53,11 +57,19 @@ class SpcReorder extends SpcFeature
 
     public function uninstall()
     {
-        foreach ([self::K_ENABLED, self::K_HOME, self::K_CART, self::K_ACCOUNT, self::K_PAYMENT] as $k) {
+        foreach ([self::K_ENABLED, self::K_HOME, self::K_CART, self::K_ACCOUNT, self::K_PAYMENT, self::K_SUMMARY] as $k) {
             Configuration::deleteByName($k);
         }
 
         return true;
+    }
+
+    /** Checkout summaries: on unless switched off (a setting never saved counts as on). */
+    public static function summaryOn()
+    {
+        $v = Configuration::get(self::K_SUMMARY);
+
+        return $v === false || (int) $v === 1;
     }
 
     public static function enabled()
@@ -272,9 +284,76 @@ class SpcReorder extends SpcFeature
             'lines' => array_slice($names, 0, self::SHOWN),
             'more' => max(0, count($names) - self::SHOWN),
             'count' => count($names),
+            'items' => array_sum(array_column($order['lines'], 'quantity')),
+            'thumbs' => self::thumbs($context, $order['lines']),
             'firstname' => (string) $context->customer->firstname,
             'payment' => (bool) Configuration::get(self::K_PAYMENT),
         ];
+    }
+
+    /**
+     * What each checkout step holds, by step id: the shopper, the addresses, the carrier and its
+     * price. Shown next to the title of a finished step, so it can be checked at a glance.
+     */
+    public static function summaries($context, array $t)
+    {
+        $out = [];
+        $customer = $context->customer;
+        if (Validate::isLoadedObject($customer)) {
+            $out['checkout-personal-information-step'] = trim(trim($customer->firstname . ' ' . $customer->lastname) . ' · ' . $customer->email, ' ·');
+        }
+        $cart = $context->cart;
+        if (!Validate::isLoadedObject($cart)) {
+            return $out;
+        }
+        $line = function ($id) {
+            $a = new Address((int) $id);
+            if (!Validate::isLoadedObject($a)) {
+                return '';
+            }
+            $street = trim($a->address1 . ' ' . $a->address2);
+
+            return trim(implode(', ', array_filter([$street, trim($a->postcode . ' ' . $a->city)])));
+        };
+        $delivery = $line($cart->id_address_delivery);
+        if ($delivery !== '') {
+            $invoice = (int) $cart->id_address_invoice !== (int) $cart->id_address_delivery ? $line($cart->id_address_invoice) : '';
+            $out['checkout-addresses-step'] = $delivery . ($invoice !== '' ? ' · ' . sprintf($t['invoice'], $invoice) : '');
+        }
+        $option = $cart->getDeliveryOption(null, true);
+        $key = is_array($option) && isset($option[$cart->id_address_delivery]) ? (string) $option[$cart->id_address_delivery] : '';
+        $names = [];
+        foreach (array_filter(explode(',', $key)) as $idCarrier) {
+            $carrier = new Carrier((int) $idCarrier, (int) $context->language->id);
+            if (Validate::isLoadedObject($carrier)) {
+                $names[] = $carrier->name;
+            }
+        }
+        if ($names) {
+            $cost = (float) $cart->getTotalShippingCost(null, true);
+            $out['checkout-delivery-step'] = implode(', ', $names) . ' · ' . ($cost > 0 ? self::money($context, $cost, $context->currency->iso_code) : $t['free']);
+        }
+
+        return $out;
+    }
+
+    /** Cover pictures of the first products of the order (small size), for the card. */
+    protected static function thumbs($context, array $lines)
+    {
+        $idShop = (int) $context->shop->id;
+        $idLang = (int) $context->language->id;
+        $type = ImageType::getFormattedName('small');
+        $out = [];
+        foreach (array_slice($lines, 0, self::SHOWN) as $line) {
+            $row = Db::getInstance()->getRow('SELECT i.id_image, pl.link_rewrite FROM `' . _DB_PREFIX_ . 'image_shop` i
+                INNER JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON (pl.id_product = i.id_product AND pl.id_lang = ' . $idLang . ' AND pl.id_shop = ' . $idShop . ')
+                WHERE i.id_product = ' . (int) $line['id_product'] . ' AND i.id_shop = ' . $idShop . ' AND i.cover = 1');
+            if ($row) {
+                $out[] = ['src' => $context->link->getImageLink($row['link_rewrite'], (int) $line['id_product'] . '-' . (int) $row['id_image'], $type), 'alt' => $line['name']];
+            }
+        }
+
+        return $out;
     }
 
     /** An amount in the order's currency, written the shop's way. */
@@ -301,6 +380,14 @@ class SpcReorder extends SpcFeature
     {
         $controller = $this->context->controller;
         $page = isset($controller->php_self) ? $controller->php_self : '';
+        if ($page === 'order' && self::summaryOn()) {
+            Media::addJsDef(['spcCheckout' => self::summaries($this->context, [
+                'invoice' => $this->l('invoice: %s'),
+                'free' => $this->l('free'),
+            ])]);
+            $controller->registerJavascript('spc-checkout', 'modules/' . $this->name . '/views/js/checkout-summary.js', ['position' => 'bottom', 'priority' => 200, 'attributes' => 'defer']);
+            $controller->registerStylesheet('spc-checkout', 'modules/' . $this->name . '/views/css/checkout-summary.css', ['media' => 'all', 'priority' => 150]);
+        }
         if (!self::enabled() || !in_array($page, ['index', 'cart', 'my-account'], true) || !$this->context->customer->isLogged()) {
             return;
         }
@@ -317,7 +404,7 @@ class SpcReorder extends SpcFeature
         if (!$this->isRegisteredInHook('displayHome') || !$this->isRegisteredInHook('displayCustomerAccount') || !$this->isRegisteredInHook('displayShoppingCartFooter')) {
             $this->registerHooks();
         }
-        $keys = [self::K_ENABLED, self::K_HOME, self::K_CART, self::K_ACCOUNT, self::K_PAYMENT];
+        $keys = [self::K_ENABLED, self::K_HOME, self::K_CART, self::K_ACCOUNT, self::K_PAYMENT, self::K_SUMMARY];
         if (Tools::isSubmit('submitSpcReorder')) {
             foreach ($keys as $k) {
                 Configuration::updateValue($k, Tools::getValue($k) ? 1 : 0);
@@ -338,6 +425,7 @@ class SpcReorder extends SpcFeature
         foreach ($keys as $k) {
             $helper->fields_value[$k] = (int) Configuration::get($k);
         }
+        $helper->fields_value[self::K_SUMMARY] = self::summaryOn() ? 1 : 0;
 
         return $out . $helper->generateForm([['form' => [
             'id_form' => 'spc-reorder',
@@ -348,6 +436,7 @@ class SpcReorder extends SpcFeature
                 $switch(self::K_HOME, $this->l('On the home page'), $this->l('A card with the last order above the home page content (displayHome).')),
                 $switch(self::K_CART, $this->l('In an empty cart'), $this->l('The same card while the cart is empty (displayShoppingCartFooter).')),
                 $switch(self::K_ACCOUNT, $this->l('In the customer account'), $this->l('A tile next to "Order history" (displayCustomerAccount).')),
+                $switch(self::K_SUMMARY, $this->l('Summaries of finished checkout steps'), $this->l('On every checkout, next to the title of a finished step: the name and e-mail, the address, the carrier and its price, so the shopper can check them at a glance (and press Edit only when something is wrong).')),
                 $switch(self::K_PAYMENT, $this->l('Straight to payment'), $this->l('Addresses and carrier taken from the last order, so the checkout opens at the payment step. Off: the checkout starts as usual.')),
             ],
             'submit' => ['title' => $this->l('Save')],

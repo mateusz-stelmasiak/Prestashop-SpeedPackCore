@@ -1,0 +1,16 @@
+/**
+ * SpeedPack Core - checkout: the summary of a finished step, under its title.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.checkout-step .spc-step-summary {
+  display: block; clear: both; margin-top: 6px; max-width: 100%; overflow: hidden;
+  font-size: .9rem; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none; white-space: nowrap; text-overflow: ellipsis;
+  color: #7a7a7a; animation: spc-step-in .3s ease both;
+}
+.checkout-step.-current .spc-step-summary, .checkout-step:not(.-complete) .spc-step-summary { display: none; }
+@keyframes spc-step-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (max-width: 767px) { .checkout-step .spc-step-summary { white-space: normal; font-size: .85rem; } }
+@media (prefers-reduced-motion: reduce) { .checkout-step .spc-step-summary { animation: none; } }

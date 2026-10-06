@@ -82,7 +82,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.6.0';
+        $this->version = '1.6.1';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -163,7 +163,8 @@ class SpeedPackCore extends Module
             && $this->registerHook('actionValidateOrder')
             && $this->registerHook('displayFooter')
             && $this->registerHook('displayLlmsTxt')
-            && $this->reorder->registerHooks();
+            && $this->reorder->registerHooks()
+            && $this->behaviour->registerHooks();
     }
 
     /* ------------------------------------------------------------------ *
@@ -222,6 +223,21 @@ class SpeedPackCore extends Module
     public function hookDisplayCustomerAccount($params)
     {
         return $this->reorder->show('account');
+    }
+
+    public function hookDisplayAdminOrderMain($params)
+    {
+        return $this->behaviour->hookDisplayAdminOrderMain($params);
+    }
+
+    public function hookDisplayAdminOrder($params)
+    {
+        return $this->behaviour->hookDisplayAdminOrder($params);
+    }
+
+    public function hookDisplayBackOfficeHeader($params)
+    {
+        return $this->behaviour->hookDisplayBackOfficeHeader($params);
     }
 
     public function hookActionValidateOrder($params)

@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.6.0.zip"><img alt="Download 1.6.0" src="https://img.shields.io/badge/download-speedpackcore--1.6.0.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.6.1.zip"><img alt="Download 1.6.1" src="https://img.shields.io/badge/download-speedpackcore--1.6.1.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.6.0" src="https://img.shields.io/badge/version-1.6.0-17201e">
+  <img alt="Version 1.6.1" src="https://img.shields.io/badge/version-1.6.1-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -144,6 +144,10 @@ Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fas
 - **Failure points:** a funnel from product to order through every checkout step, the page where carts were left, searches with no results, pages not found, error messages shown to shoppers
 - **Quantised in time:** every figure for the last 24 hours to 90 days, in buckets of 15 minutes, an hour, a day or a week, on the shop's own clock; filters for device, source (search engines, social, e-mail, ads, other sites), outcome and new or returning shoppers
 - **Searchable:** type a product, category, page or address to see the visits through it; `Kimchi > koszyk` finds visits that went from one to the other; open any visit to see it page by page with what happened on each
+- **The path on every order and cart** · *new in 1.6.1*: the order page and the cart page in the back office show every visit behind them, oldest first – when, from where, on what device, page by page with the time on each, cart additions, checkout steps, errors shown and the pay button
+
+<img src="media/journey.png" alt="The path to an order: two visits a day apart, page by page" width="100%">
+
 - **Core Web Vitals as your shoppers get them** · *new in 1.6*: LCP, INP, CLS, TTFB and FCP measured in their browsers, shown as the 75th percentile Google judges a page by, with the share of good, needs-improvement and poor page views, by page and by device
 - InstantNav swaps count as pages; pages Chrome prerendered count only once shown; search engines and the speed audit are not recorded
 - **Private by design:** no cookie of its own (the shop's session ties a visit together), no IP address, no browser string. Optional: record only after analytics consent (Google Consent Mode, or one line from your banner), link visits to customer accounts. Visits are deleted after 90 days (adjustable). Off until you switch it on
@@ -153,6 +157,7 @@ Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fas
 - Signed-in shoppers who have ordered before see **"Order the same as last time?"** with their last order (products, date, total) on the home page and in an empty cart, and a tile in their account
 - One tap puts the products in the cart, uses the **same addresses and carrier**, and opens the checkout **at the payment step**; with cash on delivery or a bank transfer a repeat order takes two taps
 - Products no longer sold or out of stock are left out, and the shopper is told which; customised lines are not repeated
+- **Summaries on the checkout** (on every checkout, not only repeat orders): each finished step shows what it holds under its title – name and e-mail, the address, the carrier and its price – so the shopper checks it at a glance and opens a step only to change it
 - Built for shops people buy from again and again: food, cosmetics, pet supplies, office supplies. Off until you switch it on; each place has its own switch
 
 ### Custom audit and sharing
@@ -229,7 +234,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.6.0.zip](dist/speedpackcore-1.6.0.zip)**.
+1. Download **[speedpackcore-1.6.1.zip](dist/speedpackcore-1.6.1.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -247,7 +252,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 | | |
 |---|---|
 | **Compatibility** | PrestaShop 1.7.6.0 to 9.x, PHP 7.1 or newer, multistore |
-| **Hooks** | `actionDispatcherBefore` (only acts on the speed audit's own requests), `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews`, `actionValidateOrder` (Behaviour: the visit an order came from), `displayFooter` and `displayLlmsTxt` (the opt-in credit and llms.txt section), `displayHome`, `displayShoppingCartFooter`, `displayCustomerAccount` (Reorder) |
+| **Hooks** | `actionDispatcherBefore` (only acts on the speed audit's own requests), `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews`, `actionValidateOrder` (Behaviour: the visit an order came from), `displayFooter` and `displayLlmsTxt` (the opt-in credit and llms.txt section), `displayHome`, `displayShoppingCartFooter`, `displayCustomerAccount` (Reorder), `displayAdminOrderMain` / `displayAdminOrder` and `displayBackOfficeHeader` (the path on orders and carts) |
 | **Overrides** | `Address::addressExists()`, installed and removed with the module. With Redis on, the module also writes `override/classes/cache/CacheRedis.php` |
 | **Files it changes** | With a data cache on, `app/config/parameters.php` (cache entries only; the original is kept as `parameters.php.speedpackcore.bak`) |
 | **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints), `collect` (Behaviour), `reorder` (Reorder) |
@@ -274,7 +279,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Audit de vitesse :** chaque partie mesurée avec et sans SpeedPack sur votre boutique, en une minute environ.
 - **Contrôle de santé :** le guide d'optimisation de PrestaShop vérifié sur votre serveur (PHP, base de données, réglages), les lignes à envoyer à l'hébergeur, le nettoyage de la base et le poids de chaque module.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.6.0.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.6.1.zip`, puis Configurer.
 </details>
 
 <details>
@@ -290,7 +295,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Audyt szybkości:** każda część zmierzona ze SpeedPack i bez niego w Twoim sklepie, w około minutę.
 - **Kontrola:** poradnik optymalizacji PrestaShop sprawdzony na Twoim serwerze (PHP, baza danych, ustawienia), gotowe linie dla hostingu, porządki w bazie i waga każdego modułu.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.6.0.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.6.1.zip`, potem Konfiguruj.
 </details>
 
 ---

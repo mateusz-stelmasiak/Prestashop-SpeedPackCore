@@ -85,10 +85,32 @@ PS_BUS = """<script>window.prestashop = { _h: {}, page: {}, urls: {},
   on: function (n, f) { (this._h[n] = this._h[n] || []).push(f); },
   emit: function (n, d) { (this._h[n] || []).forEach(function (f) { f(d); }); } };</script>"""
 
-CHECKOUT = ('<section id="checkout">' + ''.join(
-    '<section id="checkout-%s-step" class="checkout-step%s"><h2>%s</h2></section>' % (s, ' -current' if i == 0 else '', s)
-    for i, s in enumerate(['personal-information', 'addresses', 'delivery', 'payment']))
-    + '<div id="payment-confirmation"><button type="submit">Zamawiam i płacę</button></div></section>')
+# Classic's checkout: a section per step, its title with the done mark, the number and "edit"
+CHECKOUT_STEPS = [('personal-information', 'Dane osobowe'), ('addresses', 'Adresy'), ('delivery', 'Sposób dostawy'), ('payment', 'Płatność')]
+
+
+def checkout(done=0):
+    return ('<section id="checkout">' + ''.join(
+        '<section id="checkout-%s-step" class="checkout-step -reachable%s%s"><h1 class="step-title js-step-title h3">'
+        '<i class="material-icons rtl-no-flip done">&#10003;</i><span class="step-number">%d</span> %s '
+        '<span class="step-edit text-muted"><i class="material-icons edit">&#9998;</i> edytuj</span></h1><div class="content">krok %d</div></section>' % (
+            s, ' -complete' if i < done else '', ' -current' if i == done else '', i + 1, name, i + 1)
+        for i, (s, name) in enumerate(CHECKOUT_STEPS))
+        + '<div id="payment-confirmation"><button type="submit">Zamawiam i płacę</button></div></section>')
+
+
+CHECKOUT = checkout(0)
+
+# what a Classic-based theme looks like around the module's pieces (fonts, buttons, cards)
+THEME_CSS = ('body{margin:0;background:#f6f6f6;font:16px/1.5 Manrope,"Noto Sans",Arial,sans-serif;color:#232323}'
+             '.btn{display:inline-block;border:0;cursor:pointer;font:inherit}.btn-primary{padding:.5rem 1.25rem;background:#24b9d7;color:#fff;text-transform:uppercase;'
+             'box-shadow:2px 2px 4px 0 rgba(0,0,0,.2);font-weight:600}.btn-primary:hover{background:#2592a9}'
+             '.wrap{max-width:1180px;margin:30px auto;padding:0 15px}h2{font-weight:700}'
+             '#checkout .checkout-step{background:#fff;padding:18px 24px;border-bottom:1px solid #eee}'
+             '.step-title{margin:0;font-size:1.6rem;font-weight:500;text-transform:uppercase}.step-title .done{color:#4cbb6c;margin-right:14px;display:none}'
+             '.checkout-step.-complete .step-title .done{display:inline-block}.checkout-step.-complete .step-number{display:none}'
+             '.step-number{display:inline-block;width:2.4rem;height:2.4rem;line-height:2.4rem;border-radius:50%;background:#4cbb6c;color:#fff;text-align:center;margin-right:14px;font-size:1.1rem}'
+             '.step-edit{float:right;font-size:1rem;text-transform:none}.checkout-step:not(.-current) .content{display:none}')
 
 
 def body_of(path):
@@ -120,7 +142,12 @@ def page(path, mode, query=''):
     if visitor:
         add += behaviour(query)
     kind, classes = body_of(path)
-    extra = CHECKOUT if kind == 'checkout' else ('<section id="product-search-no-matches">Brak wyników</section>' if kind == 'search' else '')
+    q = dict(urllib.parse.parse_qsl(query))
+    if kind == 'checkout' and q.get('summary') and os.environ.get('CHECKOUT_JSON'):
+        add += ('<style>%s</style><link rel="stylesheet" href="/modules/speedpackcore/views/css/checkout-summary.css">'
+                '<script>window.spcCheckout=%s</script><script src="/modules/speedpackcore/views/js/checkout-summary.js" defer></script>') % (
+            THEME_CSS, open(os.environ['CHECKOUT_JSON'], encoding='utf-8').read())
+    extra = checkout(int(q.get('done', 0))) if kind == 'checkout' else ('<section id="product-search-no-matches">Brak wyników</section>' if kind == 'search' else '')
     return ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>'
             '<style>#header a{margin:8px;display:inline-block}.card{display:inline-block;margin:6px}#menu-icon{display:none}'
             '@media(max-width:767px){.desk{display:none}#menu-icon{display:inline-block;padding:10px}}</style></head>'
@@ -208,6 +235,37 @@ class H(http.server.BaseHTTPRequestHandler):
             BHQ.append(q)
             data = json.load(open(os.environ['BH_REPORT'], encoding='utf-8'))
             return self.send(json.dumps(data['session'] if q.get('op') == 'session' else data['report']), 'application/json')
+        if p == '/bo-order' or p == '/bo-cart':
+            # a back-office page as PrestaShop draws it: the order page with the panel from its hook,
+            # the cart page (old layout or the new one) with the panel sent along with the head
+            q = dict(urllib.parse.parse_qsl(u.query))
+            bo = ('body{margin:0;background:#eff1f2;font:13px/1.5 "Open Sans",Arial,sans-serif;color:#363a41}'
+                  '.card,.panel{margin-bottom:16px;border:1px solid #dbe6e9;border-radius:5px;background:#fff}'
+                  '.card-header,.panel-heading{padding:10px 16px;border-bottom:1px solid #dbe6e9;font-size:14px;font-weight:600}'
+                  '.card-body,.panel-body{padding:16px}a{color:#25b9d7;text-decoration:none}'
+                  '.wrap{max-width:1400px;padding:20px}.page-head{padding:14px 20px;background:#fff;border-bottom:1px solid #dbe6e9;font-size:18px}')
+            if p == '/bo-order':
+                body = '<div class="wrap"><div class="card"><div class="card-header">Zamówienie #77</div><div class="card-body">Produkty…</div></div>%s</div>' % open(os.environ['JOURNEY_HTML'], encoding='utf-8').read()
+                head = ''
+            else:
+                head = open(os.environ['JOURNEY_CART_HTML'], encoding='utf-8').read()
+                cart = '<div class="panel"><div class="panel-heading">Koszyk #900</div><div class="panel-body">Klient, produkty…</div></div>'
+                body = ('<div id="main-div"><div class="header-toolbar">Koszyk</div><div class="content-div"><div class="container-fluid">%s</div></div></div>' % cart.replace('panel', 'card')) if q.get('layout') == 'new' \
+                    else ('<div class="page-head">Koszyk</div><div id="content" class="bootstrap"><div class="row">%s</div></div>' % cart)
+            return self.send('<!doctype html><html><head><meta charset="utf-8"><style>%s</style>%s</head><body>%s</body></html>' % (bo, head, body), 'text/html; charset=utf-8')
+        if p == '/reorder-card':
+            card = open(os.environ['REORDER_HTML'], encoding='utf-8').read()
+            # the shop's images of the test order: grey squares with the product's initial
+            card = re.sub(r'src="https://shop.test/(\d+)-small_default/(\w+)\.jpg"', lambda m: 'src="/__thumb/%s"' % m.group(2), card)
+            return self.send('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                             '<style>%s</style><link rel="stylesheet" href="/modules/speedpackcore/views/css/reorder.css"></head>'
+                             '<body><div class="wrap"><p style="color:#24b9d7">Wszystkie produkty</p>%s</div></body></html>' % (THEME_CSS, card), 'text/html; charset=utf-8')
+        if p.startswith('/__thumb/'):
+            name = p.split('/')[-1]
+            hue = sum(map(ord, name)) % 360
+            svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="98" height="98"><rect width="98" height="98" fill="hsl(%d,45%%,80%%)"/>'
+                   '<text x="49" y="62" font-size="38" text-anchor="middle" fill="hsl(%d,40%%,35%%)" font-family="Arial">%s</text></svg>') % (hue, hue, name[:1].upper())
+            return self.send(svg, 'image/svg+xml')
         if p == '/__bhq':
             return self.send(json.dumps(BHQ), 'application/json')
         if p in ('/admin', '/admin-go', '/admin-auto'):

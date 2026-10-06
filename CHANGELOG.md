@@ -1,5 +1,11 @@
 # Changelog
 
+## SpeedPack Core 1.6.1
+
+- **The path on every order and cart:** the back-office order page (displayAdminOrderMain from 1.7.7, displayAdminOrder before) and the cart page (placed at the top by a small script, on the old and the new page) show every visit behind them: summary tiles (visits, days to decide, pages, engaged time, where the shopper first came from, devices) and each visit page by page, with the time on each, cart additions, checkout steps, errors shown and the pay button. Visits now remember their cart; existing tables get the column on upgrade. A switch in Behaviour.
+- **Checkout summaries:** each finished checkout step shows what it holds under its title (name and e-mail, the address and the invoice one when it differs, the carrier and its price), lined up with the title's words, hidden while the step is open. On by default, on every checkout.
+- **Reorder's card restyled** to sit in the theme: a white card with an accent edge, the last order's product pictures, the theme's own button with a turning arrow, "same address and delivery · straight to payment", a full-width button on phones.
+
 ## SpeedPack Core 1.6.0
 
 **Reorder**, a new part: "Order the same as last time?" for signed-in shoppers who have ordered before – a card on the home page and in an empty cart, a tile in the account. One tap puts the last order's products in the cart (leaving out, and naming, what is no longer sold or in stock), uses the same addresses and carrier, and saves the checkout steps as done the way PrestaShop's checkout does (with its cart checksum), so the checkout opens at payment. Off until switched on.

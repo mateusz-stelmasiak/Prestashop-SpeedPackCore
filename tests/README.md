@@ -20,6 +20,8 @@ cd tests && composer install   # Smarty, to render the module's own templates
 | `browser/shop.e2e.js` | InstantNav refuses pages with active content and swaps clean ones; SmartPrefetch's prefetch and prerender rules, the cart left out | Node, Playwright |
 | `php/behaviour.php` | Behaviour against a real MariaDB: recording (retried beacons, the 30-minute gap, junk), sources, and every report figure for scripted visits: KPIs, local time buckets, pages, routes, paths, paths of success, funnel, failure points, search, filters, one visit, clean-up | MariaDB / MySQL |
 | `php/reorder.php` | Reorder against a real MariaDB with real Smarty: the last valid order, what goes into the cart and what is left out, addresses, the carrier as it is now, the checkout saved to open at payment (with the cart checksum), where the card shows, the card, settings | MariaDB / MySQL, Smarty |
+| `browser/reorder.e2e.js` | Reorder's card and the checkout summaries in Chromium, styled like a Classic-based theme, on a computer and a phone | Node, Playwright |
+| `browser/journey.e2e.js` | The path panel on an order page and on a cart page (old and new layout), placed and styled, nothing spilling out | Node, Playwright |
 | `browser/behaviour.e2e.js` | The tracker in Chromium (views, InstantNav swaps, engaged and idle time, cart, checkout steps, pay, errors, searches, campaign tags; nothing from robots, before consent or while prerendered) and the Behaviour tab drawing a real report | Node, Playwright |
 | `php/behaviour-replay.php` | What the tracker sent in Chromium, stored by the real store: every view and event kept | MariaDB / MySQL |
 

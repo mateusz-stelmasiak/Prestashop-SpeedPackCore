@@ -234,3 +234,9 @@ $_MODULE['<{speedpackcore}prestashop>spcreorder_521c36a31c2762741cf0f8890cbe05e3
 $_MODULE['<{speedpackcore}prestashop>spcreorder_d15305d7a4e34e02489c74a5ef542f36'] = 'Wyłączone';
 $_MODULE['<{speedpackcore}prestashop>spcreorder_77bf7ad77785378ff75d1b21738b0ac8'] = 'Ostatnie zamówienie w koszyku i zamówienie otwarte na płatności, jednym dotknięciem.';
 $_MODULE['<{speedpackcore}prestashop>spcreorder_53146506b94871f34fe8ba976a93eba0'] = 'Ostatnie zamówienie w koszyku jednym dotknięciem.';
+$_MODULE['<{speedpackcore}prestashop>reorder_acf6a0a5fbbd799604f3eb0440960c69'] = 'Twoje zamówienie z %s';
+$_MODULE['<{speedpackcore}prestashop>reorder_3f6d9ce2553beedde5407ba500c36fad'] = 'Ten sam adres i dostawa';
+$_MODULE['<{speedpackcore}prestashop>reorder_abf37e8d623a7a959a9e662f2c24624c'] = 'Od razu do płatności';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_b6c4c5b74afc87ecfbcb208e66ee98fe'] = 'faktura: %s';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_aa2d6e4f578eb0cfaba23beef76c2194'] = 'gratis';
+$_MODULE['<{speedpackcore}prestashop>spcreorder_abf37e8d623a7a959a9e662f2c24624c'] = 'Od razu do płatności';

@@ -1,0 +1,57 @@
+/**
+ * SpeedPack Core - the shopper's path on an order or a cart page.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-journey { --spc-j-accent: #25b9d7; --spc-j-ink: #1d2a5b; --spc-j-muted: #6c868e; --spc-j-line: #dbe6e9; margin-bottom: 20px; }
+.spc-journey .spc-journey-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.spc-journey-title { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; color: var(--spc-j-ink); }
+.spc-journey-title svg { width: 18px; height: 18px; fill: none; stroke: var(--spc-j-accent); stroke-width: 2; stroke-linecap: round; }
+.spc-journey-link { margin-left: auto; font-size: 12px; font-weight: 600; }
+.spc-journey-none { margin: 0; color: var(--spc-j-muted); }
+
+.spc-jtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.spc-jtile { padding: 10px 12px; border: 1px solid var(--spc-j-line); border-radius: 6px; background: #fafcfd; }
+.spc-jtile b { display: block; font-size: 18px; line-height: 1.25; color: var(--spc-j-ink); overflow-wrap: anywhere; }
+.spc-jtile b.is-text { font-size: 15px; line-height: 1.35; }
+.spc-jtile span { font-size: 12px; color: var(--spc-j-muted); }
+
+.spc-jvisits { margin: 0; padding: 0; list-style: none; }
+.spc-jvisit { position: relative; margin: 0 0 4px; padding: 0 0 14px 22px; border-left: 2px solid var(--spc-j-line); }
+.spc-jvisit::before { content: ''; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; background: #b5c1c6; box-shadow: 0 0 0 1px var(--spc-j-line); }
+.spc-jvisit.o-ordered::before { background: #2e8b57; }
+.spc-jvisit.o-cart::before, .spc-jvisit.o-checkout::before { background: #e0a100; }
+.spc-jvisit:last-child { border-left-color: transparent; }
+.spc-jgap { margin: -4px 0 10px; padding-left: 22px; border-left: 2px dashed var(--spc-j-line); list-style: none; }
+.spc-jgap span { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #f2f5f6; font-size: 11px; color: var(--spc-j-muted); }
+
+.spc-jvisit-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-bottom: 10px; }
+.spc-jnum { padding: 1px 8px; border-radius: 4px; background: var(--spc-j-ink); font-size: 11px; font-weight: 700; color: #fff; }
+.spc-jdate { color: var(--spc-j-ink); }
+.spc-jmeta { display: inline-flex; flex-wrap: wrap; gap: 2px 0; font-size: 12px; color: var(--spc-j-muted); }
+.spc-jmeta > span + span::before { content: '·'; margin: 0 6px; opacity: .6; }
+.spc-jpill { padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #f2f4f5; color: var(--spc-j-muted); }
+.spc-jpill.o-ordered { background: #e3f4ea; color: #1f7a48; }
+.spc-jpill.o-cart, .spc-jpill.o-checkout { background: #fff3d6; color: #8a5a00; }
+.spc-jvisit-head .spc-jpill { margin-left: auto; }
+
+.spc-jflow { display: flex; flex-wrap: wrap; gap: 10px 0; margin: 0; padding: 0; list-style: none; }
+.spc-jstep { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 190px; padding-right: 22px; }
+.spc-jstep:not(:last-child)::after { content: ''; position: absolute; right: 6px; top: 18px; width: 10px; height: 10px; border-top: 2px solid #b5c1c6; border-right: 2px solid #b5c1c6; transform: rotate(45deg); }
+.spc-jcard { display: flex; flex-direction: column; padding: 6px 10px; border: 1px solid var(--spc-j-line); border-radius: 6px; background: #fff; }
+.spc-jcard small { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--spc-j-muted); }
+.spc-jcard strong { overflow: hidden; font-size: 13px; font-weight: 600; color: var(--spc-j-ink); white-space: nowrap; text-overflow: ellipsis; }
+.spc-jcard em { font-size: 11px; font-style: normal; color: var(--spc-j-muted); }
+.spc-jstep.k-product .spc-jcard { border-color: #b9e3ee; }
+.spc-jstep.k-cart .spc-jcard, .spc-jstep.k-checkout .spc-jcard, .spc-jstep.k-order .spc-jcard { border-color: #f0d48a; background: #fffaf0; }
+.spc-jstep.k-order-confirmation .spc-jcard { border-color: #9fd6b5; background: #f1faf4; }
+.spc-jstep.k-pagenotfound .spc-jcard { border-color: #f1b7ad; background: #fdf3f1; }
+.spc-jmore .spc-jcard { border-style: dashed; }
+.spc-jevents { display: flex; flex-direction: column; gap: 3px; }
+.spc-jev { padding: 2px 7px; border-radius: 4px; font-size: 11px; line-height: 1.45; background: #eef7fa; color: #1d6f8a; overflow-wrap: anywhere; }
+.spc-jev.e-cart::before { content: '+ '; font-weight: 700; }
+.spc-jev.e-step::before { content: '\2713  '; }
+.spc-jev.e-pay, .spc-jev.e-reorder { background: #e3f4ea; color: #1f7a48; font-weight: 600; }
+.spc-jev.e-error { background: #fbe9e7; color: #a5301f; }

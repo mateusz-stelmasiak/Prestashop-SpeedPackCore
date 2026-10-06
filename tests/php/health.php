@@ -16,6 +16,7 @@ class Db
     function executeS($sql) { return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC); }
     function getRow($sql) { $r = $this->executeS($sql); return $r ? $r[0] : false; }
     function getValue($sql) { $r = $this->getRow($sql); return $r ? reset($r) : false; }
+    function Insert_ID() { return (int) $this->pdo->lastInsertId(); }
     function Affected_Rows() { return $this->affected; }
     function escape($s) { return substr($this->pdo->quote((string) $s), 1, -1); }
 }
@@ -26,6 +27,7 @@ class Tools
     static function getHttpHost($a = false, $b = false, $c = false) { return 'shop.test'; }
     static $post = [];
     static function getValue($k, $d = false) { return isset(self::$post[$k]) ? self::$post[$k] : $d; }
+    static function getIsset($k) { return isset(self::$post[$k]); }
     static function isSubmit($k) { return isset(self::$post[$k]); }
     static function strtolower($s) { return mb_strtolower((string) $s); } static function strtoupper($s) { return mb_strtoupper((string) $s); }
     static function strlen($s) { return mb_strlen((string) $s); } static function substr($s, $a, $b = null) { return mb_substr((string) $s, $a, $b); }
@@ -39,17 +41,28 @@ class Link
     function getPageLink($p, $s = null, $l = null, $q = null) { return $GLOBALS['BASE'] . '/pl/' . ($p === 'index' ? '' : $p); }
     function getCategoryLink($id, $a = null, $l = null) { return $GLOBALS['BASE'] . "/pl/$id-kategoria"; }
     function getProductLink($id, $a = null, $b = null, $c = null, $l = null) { return $GLOBALS['BASE'] . "/pl/$id-produkt.html"; }
+    function getAdminLink($c, $t = true, $r = [], $p = []) { return 'index.php?controller=' . $c . '&' . http_build_query($p); }
 }
+class Validate { static function isLoadedObject($o) { return is_object($o) && !empty($o->id); } }
+class Order
+{
+    static $carts = [];  // id_order => id_cart
+    public $id, $id_cart;
+    function __construct($id = null) { if (isset(self::$carts[$id])) { $this->id = (int) $id; $this->id_cart = self::$carts[$id]; } }
+    static function getIdByCartId($idCart) { return (int) array_search($idCart, self::$carts); }
+}
+class HealthLocale { function formatPrice($a, $iso) { return number_format($a, 2, ',', ' ') . ' zł'; } }
 class Media { static function addJsDef($a) {} }
 class Ctl { public $php_self = 'index'; public $js = []; function addJS($p) { $this->js[] = $p; } function addCSS($p) { $this->js[] = $p; } function registerJavascript($i, $p, $o = []) {} function registerStylesheet($i, $p, $o = []) {} }
 class ShopObj { public $id = 1, $id_shop_group = 1, $theme_name = 'classic'; function getBaseURL($ssl = true) { return $GLOBALS['BASE'] . '/'; } }
 class Context
 {
-    public $link, $controller, $language, $smarty, $shop; static $c;
+    public $link, $controller, $language, $smarty, $shop, $currency; static $c;
+    function getCurrentLocale() { return new HealthLocale(); }
     static function getContext()
     {
         if (!self::$c) {
-            $c = self::$c = new Context(); $c->link = new Link(); $c->controller = new Ctl(); $c->language = (object) ['id' => 1]; $c->shop = new ShopObj();
+            $c = self::$c = new Context(); $c->link = new Link(); $c->controller = new Ctl(); $c->language = (object) ['id' => 1]; $c->shop = new ShopObj(); $c->currency = (object) ['id' => 1, 'iso_code' => 'PLN'];
             $s = $c->smarty = new Smarty(); $s->setCompileDir(SPC_TMP . '/smarty');
             $s->registerPlugin('function', 'l', function ($p) { $t = $p['s']; if (isset($p['sprintf'])) { $t = vsprintf($t, (array) $p['sprintf']); } return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); });
             $s->registerPlugin('modifier', 'intval', 'intval');
@@ -199,4 +212,61 @@ ok(strpos($html, 'Switch off multi-front optimizations') !== false, 'one-click f
 Tools::$post = ['submitSpcMultiFront' => 1];
 $m->getContent();
 ok(Configuration::get('PS_SMARTY_LOCAL') === 0, 'multi-front switched off');
+
+// ---------- the shopper's path on an order and on a cart, rendered with real Smarty
+$db->pdo->exec('DELETE FROM ps_spc_bh_session'); $db->pdo->exec('DELETE FROM ps_spc_bh_view'); $db->pdo->exec('DELETE FROM ps_spc_bh_event');
+$db->pdo->exec("CREATE TABLE IF NOT EXISTS ps_product_lang (id_product INT, id_shop INT, id_lang INT, name VARCHAR(128))");
+$db->pdo->exec("DELETE FROM ps_product_lang"); $db->pdo->exec("INSERT INTO ps_product_lang VALUES (7, 1, 1, 'Kimchi klasyczne'), (8, 1, 1, 'Zakwas <b>buraczany</b>')");
+$env = ['id_shop' => 1, 'host' => 'shop.test', 'id_customer' => 0, 'returning' => false, 'id_cart' => 900];
+$t0 = strtotime('2026-10-04 19:12:00');
+$walk = function ($start, array $steps, array $first = [], $device = 0) use ($env) {
+    $state = ['id' => 0, 'last' => 0]; $now = $start;
+    foreach ($steps as $i => $st) {
+        $k = sprintf('%08x', mt_rand(0, 0x7fffffff));
+        $v = ['t' => 'v', 'k' => $k, 'p' => $st[0], 'i' => $st[1], 'u' => $st[3], 'n' => $i ? 1 : 0, 'd' => $device] + ($i ? [] : $first);
+        $state = SpcBehaviourStore::collect($state, [$v], $env, $now);
+        $msgs = [];
+        foreach (isset($st[4]) ? $st[4] : [] as $e) { $msgs[] = ['t' => 'e', 'k' => $k] + $e; }
+        $msgs[] = ['t' => 't', 'k' => $k, 'ms' => $st[2] * 1000, 's' => 70];
+        $now += $st[2] + 3;
+        $state = SpcBehaviourStore::collect($state, $msgs, $env, $now);
+    }
+    return $state;
+};
+$walk($t0, [['index', 0, 12, '/pl/'], ['category', 3, 25, '/pl/3-fermentowane'], ['product', 7, 48, '/pl/fermentowane/7-kimchi.html', [['e' => 'cart']]], ['product', 8, 20, '/pl/8-zakwas.html']], ['r' => 'https://www.google.com/'], 2);
+$st = $walk($t0 + 26 * 3600, [['index', 0, 5, '/pl/'], ['cart', 0, 30, '/pl/koszyk'], ['checkout', 0, 140, '/pl/zamowienie', [['e' => 'step', 'd' => 'personal'], ['e' => 'step', 'd' => 'addresses'], ['e' => 'step', 'd' => 'delivery'], ['e' => 'error', 'd' => 'delivery: Brak dostawy pod ten kod'], ['e' => 'step', 'd' => 'payment'], ['e' => 'pay']]], ['order-confirmation', 0, 9, '/pl/potwierdzenie-zamowienia']], [], 0);
+SpcBehaviourStore::ordered($st['id'], 77, 189.5, $t0 + 26 * 3600 + 200);
+$db->pdo->exec('UPDATE ps_spc_bh_session SET id_order = 77 WHERE id_session = ' . (int) $st['id']);
+Order::$carts = [77 => 900];
+Configuration::set('SPC_BH_ENABLED', 1);
+$panel = $m->hookDisplayAdminOrderMain(['id_order' => 77]);
+$plain = trim(preg_replace('/\s+/', ' ', html_entity_decode(preg_replace('/<[^>]+>/', ' ', $panel), ENT_QUOTES, 'UTF-8')));
+echo '    order panel: ', substr($plain, 0, 400), "\n";
+ok(strpos($panel, 'class="card spc-journey"') !== false && strpos($panel, 'card-header') !== false && strpos($panel, 'journey.css') !== false, 'the order page (PrestaShop 9): a card in its style, with its stylesheet');
+ok(strpos($plain, 'Path to this order') !== false && substr_count($panel, 'class="spc-jvisit ') === 2 && strpos($plain, '26 h later') !== false, 'two visits, 26 hours apart');
+ok(strpos($plain, '2 visits') !== false && strpos($plain, '1 day to decide') !== false && strpos($plain, '8 pages seen') !== false && strpos($plain, 'Search engine came from google.com') !== false && strpos($plain, 'Phone, Computer') !== false, 'the summary tiles');
+ok(strpos($plain, 'Visit 1 04.10.2026 19:12 Phone Search engine (google.com)') !== false && strpos($plain, 'Visit 2 05.10.2026 21:12 Computer Direct') !== false, 'each visit: when, device, source');
+ok(strpos($plain, 'Product Kimchi klasyczne 48 s + added to cart') !== false || strpos($plain, 'Product Kimchi klasyczne 48 s added to cart') !== false, 'each page: type, name, time, what happened ' . $plain);
+ok(strpos($panel, 'Zakwas &lt;b&gt;buraczany&lt;/b&gt;') !== false && strpos($panel, '<b>buraczany') === false, 'names shown as text');
+ok(strpos($plain, 'Personal details') !== false && strpos($plain, 'Personal details › Address › Delivery › Payment') !== false && strpos($plain, 'Delivery: Brak dostawy pod ten kod') !== false && strpos($plain, 'pressed pay') !== false && strpos($plain, 'Ordered · 189,50 zł') !== false, 'checkout steps, the error shown, pay, the order and its total');
+if (getenv('SPC_JOURNEY_HTML')) { file_put_contents(getenv('SPC_JOURNEY_HTML'), $panel); }
+// the cart page: no hook there, the panel comes with the page's head
+Tools::$post = ['controller' => 'AdminCarts', 'viewcart' => '', 'id_cart' => 900];
+$head = $m->hookDisplayBackOfficeHeader([]);
+ok(strpos($head, '<template id="spc-journey-cart">') === 0 && strpos($head, 'Path to this cart') !== false && strpos($head, 'views/js/journey.js') !== false && substr_count($head, 'class="spc-jvisit ') === 2, 'the cart page: the panel for its head, placed by journey.js');
+if (getenv('SPC_JOURNEY_CART_HTML')) { file_put_contents(getenv('SPC_JOURNEY_CART_HTML'), $head); }
+Tools::$post = ['controller' => 'AdminOrders'];
+ok($m->hookDisplayBackOfficeHeader([]) === '', 'other pages: nothing');
+$_SERVER['REQUEST_URI'] = '/admin123/index.php/sell/orders/carts/900/view?_token=x'; Tools::$post = [];
+ok(strpos($m->hookDisplayBackOfficeHeader([]), 'Path to this cart') !== false, 'the new cart page (PrestaShop 9 address) too');
+unset($_SERVER['REQUEST_URI']);
+$none = $m->hookDisplayAdminOrderMain(['id_order' => 78]);
+ok($none === '', 'an unknown order: nothing');
+Order::$carts[78] = 901;
+ok(strpos($m->hookDisplayAdminOrderMain(['id_order' => 78]), 'No visit was recorded for it') !== false, 'an order with no recorded visit says so (while recording is on)');
+Configuration::set('SPC_BH_ENABLED', 0);
+ok($m->hookDisplayAdminOrderMain(['id_order' => 78]) === '' && $m->hookDisplayAdminOrder(['id_order' => 77]) === '', 'recording off and no visits: nothing; the old order hook stays quiet on PrestaShop 9 (no double panel)');
+Configuration::set('SPC_BH_PATHS', 0);
+ok($m->hookDisplayAdminOrderMain(['id_order' => 77]) === '', 'switched off in the settings: nothing');
+Configuration::set('SPC_BH_PATHS', 1);
 echo "ALL OK\n";

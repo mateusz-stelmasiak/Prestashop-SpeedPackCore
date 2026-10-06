@@ -32,6 +32,9 @@ class SpcBehaviour extends SpcFeature
     public const K_CUSTOMER = 'SPC_BH_CUSTOMER';
     public const K_KEEP = 'SPC_BH_KEEP';
 
+    /** the shopper's path on each order and cart in the back office */
+    public const K_PATHS = 'SPC_BH_PATHS';
+
     public const JS = 'views/js/behaviour.js';
     public const JS_MIN = 'views/js/behaviour.min.js';
 
@@ -39,16 +42,25 @@ class SpcBehaviour extends SpcFeature
     {
         // off until the shop owner switches it on: recording visitors is their decision
         return Configuration::updateValue(self::K_ENABLED, 0)
+            && Configuration::updateValue(self::K_PATHS, 1)
             && Configuration::updateValue(self::K_CONSENT, 0)
             && Configuration::updateValue(self::K_CUSTOMER, 0)
             && Configuration::updateValue(self::K_KEEP, 90)
             && SpcBehaviourStore::install()
-            && $this->registerHook('actionValidateOrder');
+            && $this->registerHooks();
+    }
+
+    public function registerHooks()
+    {
+        return $this->registerHook('actionValidateOrder')
+            && $this->registerHook('displayAdminOrderMain')
+            && $this->registerHook('displayAdminOrder')
+            && $this->registerHook('displayBackOfficeHeader');
     }
 
     public function uninstall()
     {
-        foreach ([self::K_ENABLED, self::K_CONSENT, self::K_CUSTOMER, self::K_KEEP] as $k) {
+        foreach ([self::K_ENABLED, self::K_CONSENT, self::K_CUSTOMER, self::K_KEEP, self::K_PATHS] as $k) {
             Configuration::deleteByName($k);
         }
 
@@ -125,6 +137,218 @@ class SpcBehaviour extends SpcFeature
         }
     }
 
+    /** The path on orders and carts: on unless switched off (a setting never saved counts as on). */
+    public static function pathsOn()
+    {
+        $v = Configuration::get(self::K_PATHS);
+
+        return $v === false || (int) $v === 1;
+    }
+
+    /* ------------------------------------------------------------------ *
+     *  The shopper's path on an order or a cart
+     * ------------------------------------------------------------------ */
+
+    /** The panel for an order or a cart page: every visit behind it, page by page. */
+    public function journeyPanel($idCart, $idOrder, $where)
+    {
+        $data = $this->journeyData($idCart, $idOrder, $where);
+
+        return $data ? $this->render('admin/journey.tpl', ['spc_journey' => $data]) : '';
+    }
+
+    /** What the panel shows, or null when there is nothing to show. */
+    public function journeyData($idCart, $idOrder, $where)
+    {
+        if (!self::pathsOn()) {
+            return null;
+        }
+        try {
+            $j = SpcBehaviourStore::journey((int) $this->context->shop->id, (int) $this->context->language->id, (int) $idCart, (int) $idOrder);
+        } catch (Exception $e) {
+            return null;
+        }
+        if (!$j && !self::enabled()) {
+            return null;
+        }
+
+        return $j ? $this->present($j, $where) : [
+            'empty' => true, 'where' => $where, 'card' => $this->cardLayout(), 'css' => $this->module->getPathUri() . 'views/css/journey.css',
+            't' => ['title' => $where === 'order' ? $this->l('Path to this order') : $this->l('Path to this cart'), 'none' => $this->l('No visit was recorded for it: it was made before Behaviour recorded visits, or without the browser reporting (an app, a phone order).')],
+        ];
+    }
+
+    /** Bootstrap 4 cards on the new order page (1.7.7+) and on PrestaShop 9, panels before. */
+    protected function cardLayout()
+    {
+        return version_compare(_PS_VERSION_, '1.7.7.0', '>=');
+    }
+
+    /** Everything the template shows, written out: dates, durations, names, event lines. */
+    protected function present(array $j, $where)
+    {
+        $t = $this->texts();
+        // one visit, one device and one source: the singular names
+        $t['device'] = ['mobile' => $this->l('Phone'), 'tablet' => $this->l('Tablet'), 'desktop' => $this->l('Computer')];
+        $t['source'] = ['direct' => $this->l('Direct'), 'search' => $this->l('Search engine'), 'social' => $this->l('Social media'), 'email' => $this->l('E-mail'), 'ads' => $this->l('Ad'), 'other' => $this->l('Another site')];
+        $labels = $j['labels'];
+        $name = function ($key) use ($labels, $t) {
+            $type = explode(':', $key)[0];
+            $typeName = isset($t['types'][$type]) ? $t['types'][$type] : $type;
+            if (isset($labels[$key])) {
+                return ['name' => $labels[$key], 'type' => $typeName, 'kind' => $type];
+            }
+            $id = strpos($key, ':') !== false ? ' #' . explode(':', $key)[1] : '';
+
+            return ['name' => $typeName . $id, 'type' => '', 'kind' => $type];
+        };
+        $visits = [];
+        foreach ($j['visits'] as $i => $v) {
+            $pages = [];
+            foreach (array_slice($v['views'], 0, 40) as $view) {
+                $events = [];
+                $steps = [];
+                $stepAt = 0;
+                foreach ($view['events'] as $e) {
+                    // the checkout steps read as one line: Personal details › Address › Delivery
+                    if ($e['type'] === 'step') {
+                        $steps[] = isset($t['steps'][$e['detail']]) ? $t['steps'][$e['detail']] : $e['detail'];
+                        if (count($steps) === 1) {
+                            $events[] = ['kind' => 'step', 'text' => ''];
+                            $stepAt = count($events) - 1;
+                        }
+                        continue;
+                    }
+                    $events[] = $this->eventLine($e, $t);
+                }
+                if ($steps) {
+                    $events[$stepAt]['text'] = implode(' › ', $steps);
+                }
+                $pages[] = $name($view['page']) + [
+                    'time' => $view['activeMs'] > 0 ? $this->duration($view['activeMs']) : '',
+                    'url' => $view['url'], 'at' => date('H:i', $view['at']), 'events' => $events,
+                ];
+            }
+            $visits[] = [
+                'n' => $i + 1,
+                'label' => sprintf($this->l('Visit %d'), $i + 1),
+                'date' => $this->day($v['started']) . ' ' . date('H:i', $v['started']),
+                'device' => isset($t['device'][$v['device']]) ? $t['device'][$v['device']] : $v['device'],
+                'deviceKind' => $v['device'],
+                'source' => (isset($t['source'][$v['source']]) ? $t['source'][$v['source']] : $v['source']) . ($v['ref'] !== '' ? ' (' . $v['ref'] . ')' : '') . ($v['campaign'] !== '' ? ' · ' . $v['campaign'] : ''),
+                'length' => $this->duration(max(0, $v['last'] - $v['started']) * 1000),
+                'engaged' => sprintf($this->l('%s engaged'), $this->duration($v['activeMs'])),
+                'pages' => sprintf($this->l('%d pages'), $v['pages']),
+                'outcome' => $v['outcome'], 'outcomeText' => $t['outcomes'][$v['outcome']],
+                'total' => $v['orderedAt'] && $v['total'] > 0 ? SpcCartAnswer::price($this->context, $v['total']) : '',
+                'steps' => $pages,
+                'more' => count($v['views']) > 40 ? sprintf($this->l('and %d more pages'), count($v['views']) - 40) : '',
+                'gap' => $i > 0 ? sprintf($this->l('%s later'), $this->duration(max(0, $v['started'] - $j['visits'][$i - 1]['last']) * 1000)) : '',
+            ];
+        }
+        $sum = $j['summary'];
+        $tiles = [
+            ['text' => false, 'value' => (string) $sum['visits'], 'label' => $sum['visits'] === 1 ? $this->l('visit') : $this->l('visits')],
+            ['text' => false, 'value' => $sum['days'] > 0 ? (string) $sum['days'] : $this->duration($sum['span'] * 1000), 'label' => $sum['days'] > 0 ? ($sum['days'] === 1 ? $this->l('day to decide') : $this->l('days to decide')) : ($sum['orderedAt'] ? $this->l('from first page to order') : $this->l('from first page to last'))],
+            ['text' => false, 'value' => (string) $sum['pages'], 'label' => $this->l('pages seen')],
+            ['text' => false, 'value' => $this->duration($sum['activeMs']), 'label' => $this->l('engaged')],
+            ['text' => true, 'value' => isset($t['source'][$sum['source']]) ? $t['source'][$sum['source']] : $sum['source'], 'label' => $sum['ref'] !== '' ? sprintf($this->l('came from %s'), $sum['ref']) : $this->l('first came from')],
+            ['text' => true, 'value' => implode(', ', array_map(function ($d) use ($t) { return isset($t['device'][$d]) ? $t['device'][$d] : $d; }, $sum['devices'])), 'label' => $this->l('device')],
+        ];
+
+        return [
+            'empty' => false, 'where' => $where, 'card' => $this->cardLayout(), 'css' => $this->module->getPathUri() . 'views/css/journey.css',
+            'tiles' => $tiles, 'visits' => $visits,
+            'outcome' => $sum['outcome'], 'outcomeText' => $t['outcomes'][$sum['outcome']],
+            'link' => $this->context->link->getAdminLink('AdminModules', true, [], ['configure' => $this->name]) . '#spc-behaviour',
+            't' => [
+                'title' => $where === 'order' ? $this->l('Path to this order') : $this->l('Path to this cart'),
+                'all' => $this->l('All visits in Behaviour'),
+            ],
+        ];
+    }
+
+    protected function eventLine(array $e, array $t)
+    {
+        switch ($e['type']) {
+            case 'cart':
+                return ['kind' => 'cart', 'text' => $t['events']['cart']];
+            case 'step':
+                return ['kind' => 'step', 'text' => isset($t['steps'][$e['detail']]) ? $t['steps'][$e['detail']] : $e['detail']];
+            case 'pay':
+                return ['kind' => 'pay', 'text' => $t['events']['pay']];
+            case 'reorder':
+                return ['kind' => 'reorder', 'text' => $t['events']['reorder']];
+            case 'search':
+                return ['kind' => $e['value'] === 0 ? 'error' : 'search', 'text' => sprintf($t['events']['search'], $e['detail'], $e['value'] < 0 ? '?' : $e['value'])];
+            default:
+                // "delivery: no delivery to this postcode": the step by its name, the message as shown
+                if (preg_match('/^(personal|addresses|delivery|payment): (.*)$/s', $e['detail'], $m)) {
+                    return ['kind' => 'error', 'text' => $t['steps'][$m[1]] . ': ' . $m[2]];
+                }
+
+                return ['kind' => 'error', 'text' => $e['detail']];
+        }
+    }
+
+    /** 40 s, 2.5 min, 3 h, 2 d. */
+    protected function duration($ms)
+    {
+        $s = (int) round($ms / 1000);
+        if ($s < 60) {
+            return sprintf($this->l('%s s'), $s);
+        }
+        if ($s < 3600) {
+            return sprintf($this->l('%s min'), $s < 600 ? round($s / 60, 1) : round($s / 60));
+        }
+        if ($s < 172800) {
+            return sprintf($this->l('%s h'), round($s / 3600, 1));
+        }
+
+        return sprintf($this->l('%s days'), (int) round($s / 86400));
+    }
+
+    protected function day($ts)
+    {
+        return date('d.m.Y', $ts);
+    }
+
+    public function hookDisplayAdminOrderMain($params)
+    {
+        $order = new Order((int) $params['id_order']);
+
+        return Validate::isLoadedObject($order) ? $this->journeyPanel((int) $order->id_cart, (int) $order->id, 'order') : '';
+    }
+
+    /** The order page before 1.7.7 (from 1.7.7 on, displayAdminOrderMain shows it). */
+    public function hookDisplayAdminOrder($params)
+    {
+        return $this->cardLayout() ? '' : $this->hookDisplayAdminOrderMain($params);
+    }
+
+    /**
+     * Carts have no hook on their page: the panel is made here, with the page's head, and
+     * views/js/journey.js puts it at the top of the page.
+     */
+    public function hookDisplayBackOfficeHeader($params)
+    {
+        $idCart = 0;
+        if (Tools::getValue('controller') === 'AdminCarts' && Tools::getIsset('viewcart')) {
+            $idCart = (int) Tools::getValue('id_cart');
+        } elseif (isset($_SERVER['REQUEST_URI']) && preg_match('#/sell/orders/carts/(\d+)/view#', (string) $_SERVER['REQUEST_URI'], $m)) {
+            $idCart = (int) $m[1];
+        }
+        if ($idCart <= 0) {
+            return '';
+        }
+        $data = $this->journeyData($idCart, (int) Order::getIdByCartId($idCart), 'cart');
+        if (!$data) {
+            return '';
+        }
+
+        return $this->render('admin/journey-cart.tpl', ['spc_journey' => $data, 'spc_journey_js' => $this->module->getPathUri() . 'views/js/journey.js']);
+    }
+
     /** What the collect controller hands the store about the visitor. */
     public function env()
     {
@@ -135,6 +359,7 @@ class SpcBehaviour extends SpcFeature
             'id_shop' => (int) $context->shop->id,
             'host' => Tools::getHttpHost(false, false, true),
             'id_customer' => (int) Configuration::get(self::K_CUSTOMER) ? $idCustomer : 0,
+            'id_cart' => Validate::isLoadedObject($context->cart) ? (int) $context->cart->id : 0,
             // a shopper who has ordered before: the case for a faster repeat order
             'returning' => function () use ($idCustomer) {
                 return $idCustomer && (int) Db::getInstance()->getValue('SELECT COUNT(*) FROM `' . _DB_PREFIX_ . 'orders` WHERE valid = 1 AND id_customer = ' . $idCustomer) > 0;
@@ -174,8 +399,8 @@ class SpcBehaviour extends SpcFeature
         $out = '';
         // a zip uploaded over an older version may not have run the upgrade
         SpcBehaviourStore::install();
-        if (!$this->isRegisteredInHook('actionValidateOrder')) {
-            $this->registerHook('actionValidateOrder');
+        if (!$this->isRegisteredInHook('actionValidateOrder') || !$this->isRegisteredInHook('displayAdminOrderMain') || !$this->isRegisteredInHook('displayBackOfficeHeader')) {
+            $this->registerHooks();
         }
         if (Tools::isSubmit('submitSpcBehaviour')) {
             $keep = (int) Tools::getValue(self::K_KEEP);
@@ -186,6 +411,7 @@ class SpcBehaviour extends SpcFeature
                 Configuration::updateValue(self::K_CONSENT, Tools::getValue(self::K_CONSENT) ? 1 : 0);
                 Configuration::updateValue(self::K_CUSTOMER, Tools::getValue(self::K_CUSTOMER) ? 1 : 0);
                 Configuration::updateValue(self::K_KEEP, $keep);
+                Configuration::updateValue(self::K_PATHS, Tools::getValue(self::K_PATHS) ? 1 : 0);
                 $out .= $this->displayConfirmation($this->l('Settings updated'));
             }
         }
@@ -218,6 +444,7 @@ class SpcBehaviour extends SpcFeature
             self::K_CONSENT => (int) Configuration::get(self::K_CONSENT),
             self::K_CUSTOMER => (int) Configuration::get(self::K_CUSTOMER),
             self::K_KEEP => self::keep(),
+            self::K_PATHS => self::pathsOn() ? 1 : 0,
         ];
 
         return $out . $helper->generateForm([['form' => [
@@ -227,6 +454,7 @@ class SpcBehaviour extends SpcFeature
             'input' => [
                 $switch(self::K_ENABLED, $this->l('Record visits'), $this->l('Adds a small script (about 3 KB gzipped) to every shop page.')),
                 $switch(self::K_CONSENT, $this->l('Only after analytics consent'), $this->l('Records a visitor only once a consent banner allows analytics: Google Consent Mode (analytics_storage granted), or window.spcBehaviourConsent = true, or the event spc:consent on document.')),
+                $switch(self::K_PATHS, $this->l('The path on orders and carts'), $this->l('Every order and cart in the back office shows the visits behind it: when, from where, on what device, page by page, with what happened on each.')),
                 $switch(self::K_CUSTOMER, $this->l('Link visits to customer accounts'), $this->l('Keeps the account of a signed-in shopper with the visit, so visits can be searched by customer (customer:ID or an e-mail address). Off: only whether the shopper has ordered before is kept.')),
                 ['type' => 'text', 'name' => self::K_KEEP, 'label' => $this->l('Keep visits for'), 'suffix' => $this->l('days'), 'class' => 'fixed-width-sm', 'desc' => $this->l('Older visits are deleted.')],
             ],

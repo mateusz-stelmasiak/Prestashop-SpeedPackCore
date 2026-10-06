@@ -83,6 +83,7 @@ class SpcBehaviourStore
                 `campaign` VARCHAR(64) NOT NULL DEFAULT \'\',
                 `ordered_before` TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 `id_customer` INT UNSIGNED NOT NULL DEFAULT 0,
+                `id_cart` INT UNSIGNED NOT NULL DEFAULT 0,
                 `cart_at` INT UNSIGNED NOT NULL DEFAULT 0,
                 `checkout` TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 `ordered_at` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -92,7 +93,9 @@ class SpcBehaviourStore
                 `exit` VARCHAR(48) NOT NULL DEFAULT \'\',
                 `path` TEXT NOT NULL,
                 PRIMARY KEY (`id_session`),
-                KEY `shop_started` (`id_shop`, `started`)
+                KEY `shop_started` (`id_shop`, `started`),
+                KEY `cart` (`id_cart`),
+                KEY `order` (`id_order`)
             ) ENGINE=' . $engine . ' DEFAULT CHARSET=utf8mb4',
             'CREATE TABLE IF NOT EXISTS ' . self::table('view') . ' (
                 `id_view` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -141,17 +144,23 @@ class SpcBehaviourStore
     public static function migrate()
     {
         $db = Db::getInstance();
-        $have = [];
-        foreach ($db->executeS('SHOW COLUMNS FROM ' . self::table('view')) ?: [] as $c) {
-            $have[$c['Field']] = true;
-        }
+        // 1.6.0: Core Web Vitals; 1.6.1: the cart a visit filled, to show its path on carts and orders
         $add = [
-            'lcp_ms' => 'INT UNSIGNED NULL', 'inp_ms' => 'INT UNSIGNED NULL', 'cls' => 'SMALLINT UNSIGNED NULL',
-            'ttfb_ms' => 'INT UNSIGNED NULL', 'fcp_ms' => 'INT UNSIGNED NULL',
+            'view' => [
+                'lcp_ms' => 'INT UNSIGNED NULL', 'inp_ms' => 'INT UNSIGNED NULL', 'cls' => 'SMALLINT UNSIGNED NULL',
+                'ttfb_ms' => 'INT UNSIGNED NULL', 'fcp_ms' => 'INT UNSIGNED NULL',
+            ],
+            'session' => ['id_cart' => 'INT UNSIGNED NOT NULL DEFAULT 0, ADD KEY `cart` (`id_cart`), ADD KEY `order` (`id_order`)'],
         ];
-        foreach ($add as $col => $type) {
-            if (!isset($have[$col]) && !$db->execute('ALTER TABLE ' . self::table('view') . ' ADD `' . $col . '` ' . $type)) {
-                return false;
+        foreach ($add as $table => $cols) {
+            $have = [];
+            foreach ($db->executeS('SHOW COLUMNS FROM ' . self::table($table)) ?: [] as $c) {
+                $have[$c['Field']] = true;
+            }
+            foreach ($cols as $col => $type) {
+                if (!isset($have[$col]) && !$db->execute('ALTER TABLE ' . self::table($table) . ' ADD `' . $col . '` ' . $type)) {
+                    return false;
+                }
             }
         }
 
@@ -227,7 +236,9 @@ class SpcBehaviourStore
         if (!$session) {
             return ['id' => 0, 'last' => 0];
         }
-        $db->execute('UPDATE ' . self::table('session') . ' SET last = GREATEST(last, ' . (int) $now . ') WHERE id_session = ' . (int) $session['id_session']);
+        // the visit's cart (made during the visit, or carried over from an earlier one)
+        $cart = isset($env['id_cart']) ? (int) $env['id_cart'] : 0;
+        $db->execute('UPDATE ' . self::table('session') . ' SET last = GREATEST(last, ' . (int) $now . ')' . ($cart > 0 ? ', id_cart = ' . $cart : '') . ' WHERE id_session = ' . (int) $session['id_session']);
 
         return ['id' => (int) $session['id_session'], 'last' => (int) $now];
     }
@@ -251,6 +262,7 @@ class SpcBehaviourStore
             'campaign' => $campaign,
             'ordered_before' => $returning ? 1 : 0,
             'id_customer' => isset($env['id_customer']) ? (int) $env['id_customer'] : 0,
+            'id_cart' => isset($env['id_cart']) ? (int) $env['id_cart'] : 0,
             'path' => ' ',
         ];
         $cols = [];
@@ -710,14 +722,30 @@ class SpcBehaviourStore
         if (!$s) {
             return ['error' => 'not found'];
         }
-        $views = $db->executeS('SELECT id_view, seq, at, page, url, nav, active_ms, scroll, lcp_ms, inp_ms, cls FROM ' . self::table('view') . ' WHERE id_session = ' . (int) $id . ' ORDER BY seq');
-        $events = $db->executeS('SELECT id_view, at, type, detail, value FROM ' . self::table('event') . ' WHERE id_session = ' . (int) $id . ' ORDER BY id_event');
+        $out = self::detail($s);
+        $out['labels'] = self::labels(['x' => array_column($out['views'], 'page')], $idLang, $idShop);
+
+        return $out;
+    }
+
+    /** A visit row with its pages and what happened on each. */
+    protected static function detail(array $s)
+    {
+        $db = Db::getInstance();
+        $id = (int) $s['id_session'];
+        $views = $db->executeS('SELECT id_view, seq, at, page, url, nav, active_ms, scroll, lcp_ms, inp_ms, cls FROM ' . self::table('view') . ' WHERE id_session = ' . $id . ' ORDER BY seq');
+        $events = $db->executeS('SELECT id_view, at, type, detail, value FROM ' . self::table('event') . ' WHERE id_session = ' . $id . ' ORDER BY id_event');
         $byView = [];
         foreach ($events as $e) {
             $byView[(int) $e['id_view']][] = ['at' => (int) $e['at'], 'type' => $e['type'], 'detail' => $e['detail'], 'value' => (int) $e['value']];
         }
-        $out = ['id' => (int) $id, 'started' => (int) $s['started'], 'outcome' => self::outcome($s), 'views' => []];
-        foreach ($views as $v) {
+        $out = [
+            'id' => $id, 'started' => (int) $s['started'], 'last' => (int) $s['last'], 'outcome' => self::outcome($s),
+            'device' => self::DEVICES[min(2, (int) $s['device'])], 'source' => $s['source'], 'ref' => $s['ref'], 'campaign' => $s['campaign'],
+            'activeMs' => (int) $s['active_ms'], 'pages' => (int) $s['views'], 'cartAt' => (int) $s['cart_at'], 'orderedAt' => (int) $s['ordered_at'],
+            'total' => (float) $s['total'], 'views' => [],
+        ];
+        foreach ($views ?: [] as $v) {
             $out['views'][] = [
                 'seq' => (int) $v['seq'], 'at' => (int) $v['at'], 'page' => $v['page'], 'url' => $v['url'], 'nav' => (int) $v['nav'],
                 'activeMs' => (int) $v['active_ms'], 'scroll' => (int) $v['scroll'],
@@ -725,7 +753,60 @@ class SpcBehaviourStore
                 'events' => isset($byView[(int) $v['id_view']]) ? $byView[(int) $v['id_view']] : [],
             ];
         }
-        $out['labels'] = self::labels(['x' => array_column($out['views'], 'page')], $idLang, $idShop);
+
+        return $out;
+    }
+
+    /**
+     * Every visit behind a cart or an order, oldest first, with a summary: how many visits over
+     * how long, pages, engaged time, where the shopper first came from and on what devices.
+     *
+     * @return array|null null when no visit was recorded for it
+     */
+    public static function journey($idShop, $idLang, $idCart, $idOrder)
+    {
+        $or = [];
+        if ((int) $idCart > 0) {
+            $or[] = 'id_cart = ' . (int) $idCart;
+        }
+        if ((int) $idOrder > 0) {
+            $or[] = 'id_order = ' . (int) $idOrder;
+        }
+        if (!$or) {
+            return null;
+        }
+        $rows = Db::getInstance()->executeS('SELECT * FROM ' . self::table('session') . ' WHERE id_shop = ' . (int) $idShop . ' AND (' . implode(' OR ', $or) . ') ORDER BY started LIMIT 12');
+        if (!$rows) {
+            return null;
+        }
+        $visits = array_map([self::class, 'detail'], $rows);
+        $first = $visits[0];
+        $last = $visits[count($visits) - 1];
+        $ordered = array_values(array_filter($visits, function ($v) { return $v['orderedAt'] > 0; }));
+        $carted = array_values(array_filter($visits, function ($v) { return $v['cartAt'] > 0; }));
+        $end = $ordered ? $ordered[0]['orderedAt'] : $last['last'];
+        $out = [
+            'visits' => $visits,
+            'summary' => [
+                'visits' => count($visits),
+                'from' => $first['started'],
+                'to' => $end,
+                'span' => max(0, $end - $first['started']),
+                'days' => (int) floor(max(0, $end - $first['started']) / 86400),
+                'pages' => array_sum(array_column($visits, 'pages')),
+                'activeMs' => array_sum(array_column($visits, 'activeMs')),
+                'source' => $first['source'], 'ref' => $first['ref'], 'campaign' => $first['campaign'],
+                'devices' => array_values(array_unique(array_column($visits, 'device'))),
+                'cartAt' => $carted ? $carted[0]['cartAt'] : 0,
+                'orderedAt' => $ordered ? $ordered[0]['orderedAt'] : 0,
+                'outcome' => $ordered ? 'ordered' : $last['outcome'],
+            ],
+        ];
+        $keys = [];
+        foreach ($visits as $v) {
+            $keys = array_merge($keys, array_column($v['views'], 'page'));
+        }
+        $out['labels'] = self::labels(['x' => $keys], $idLang, $idShop);
 
         return $out;
     }

@@ -89,7 +89,7 @@ for ($i = 0; $i < 10; ++$i) {
     $state = visit([
         ['index', 0, 20], ['category', 3, 30], ['product', 7, 40, [['e' => 'cart']], '/pl/product/7', $i < 8 ? ['l' => 1800, 'b' => 300, 'f' => 900, 'c' => 50, 'in' => 120] : ['l' => 5200, 'b' => 2000, 'f' => 3500, 'c' => 400, 'in' => 600]], ['cart', 0, 25],
         ['checkout', 0, 120, $checkout(4, [['e' => 'pay']])], ['order-confirmation', 0, 15, [], '/pl/potwierdzenie-zamowienia?id_order=' . (100 + $i)],
-    ], ['id_customer' => $i < 5 ? 5 : 0, 'returning' => $i < 5]);
+    ], ['id_customer' => $i < 5 ? 5 : 0, 'returning' => $i < 5, 'id_cart' => 500 + $i]);
     SpcBehaviourStore::ordered($state['id'], 100 + $i, 89.5, $now);
 }
 // B: 6 carts left at delivery, with an error shown there
@@ -246,10 +246,25 @@ if (getenv('SPC_BH_REPORT')) {
     file_put_contents(getenv('SPC_BH_REPORT'), json_encode(['report' => $dump, 'session' => $one]));
 }
 
+// ---------- the path to an order: every visit of its cart, oldest first
+$now = $T0 - 2 * 86400 + 3600;
+visit([['index', 0, 10], ['product', 7, 30, [['e' => 'cart']]]], ['device' => 2, 'id_cart' => 500], ['r' => 'https://www.instagram.com/']);
+$jr = SpcBehaviourStore::journey(1, 1, 500, 100);
+echo '    journey ', json_encode($jr['summary']), "\n";
+ok(count($jr['visits']) === 2 && $jr['visits'][0]['started'] < $jr['visits'][1]['started'] && $jr['visits'][0]['outcome'] === 'cart' && $jr['visits'][1]['outcome'] === 'ordered', 'the order\'s path: the earlier visit that filled the cart, then the one that ordered');
+ok($jr['summary']['visits'] === 2 && $jr['summary']['days'] === 1 && $jr['summary']['pages'] === 8 && $jr['summary']['source'] === 'social' && $jr['summary']['ref'] === 'instagram.com' && $jr['summary']['devices'] === ['mobile', 'desktop'], 'summary: 2 visits, a day to decide, 8 pages, first came from Instagram on a phone, then a computer');
+ok($jr['summary']['orderedAt'] === $jr['visits'][1]['orderedAt'] && $jr['summary']['span'] === $jr['summary']['orderedAt'] - $jr['summary']['from'], 'from the first page to the order');
+ok($jr['visits'][1]['views'][2]['events'][0]['type'] === 'cart' && $jr['visits'][1]['views'][4]['events'][4]['type'] === 'pay' && $jr['labels']['product:7'] === 'Kimchi klasyczne', 'each page with what happened on it, and names');
+ok(count(SpcBehaviourStore::journey(1, 1, 0, 101)['visits']) === 1 && SpcBehaviourStore::journey(1, 1, 999, 0) === null && SpcBehaviourStore::journey(2, 1, 500, 100) === null && SpcBehaviourStore::journey(1, 1, 0, 0) === null, 'by order alone, nothing for unknown carts, other shops or no ids');
+$extra = (int) q('SELECT id_session FROM bht_spc_bh_session WHERE started < ' . ($T0 - 86400) . ' AND started > ' . ($T0 - 3 * 86400));
+foreach (['event', 'view', 'session'] as $t) { $db->execute("DELETE FROM bht_spc_bh_$t WHERE id_session = $extra"); }
+
 // ---------- clean-up
 ok(SpcBehaviourStore::purge(90, $end) === 1 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_session') === 32 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_view WHERE at < ' . ($T0 - 86400)) === 0, 'visits older than the kept days go, with their pages');
 $db->execute('ALTER TABLE bht_spc_bh_view DROP lcp_ms, DROP inp_ms, DROP cls, DROP ttfb_ms, DROP fcp_ms');
+$db->execute('ALTER TABLE bht_spc_bh_session DROP KEY `cart`, DROP KEY `order`, DROP id_cart');
 ok(SpcBehaviourStore::install() && count($db->executeS("SHOW COLUMNS FROM bht_spc_bh_view WHERE Field IN ('lcp_ms', 'inp_ms', 'cls', 'ttfb_ms', 'fcp_ms')")) === 5 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_session') === 32, 'tables from 1.5.0 get the Core Web Vitals columns, visits kept');
+ok(count($db->executeS("SHOW COLUMNS FROM bht_spc_bh_session WHERE Field = 'id_cart'")) === 1 && count($db->executeS("SHOW INDEX FROM bht_spc_bh_session WHERE Key_name IN ('cart', 'order')")) === 2 && SpcBehaviourStore::install(), 'and the cart column with its indexes (installing again changes nothing)');
 ok(SpcBehaviourStore::uninstall() && q("SHOW TABLES LIKE 'bht_spc_bh_session'") === false, 'uninstall drops the tables');
 foreach (['product_lang', 'category_lang', 'cms_lang', 'customer'] as $t) { $db->execute("DROP TABLE IF EXISTS bht_$t"); }
 echo "ALL OK\n";

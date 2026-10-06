@@ -33,11 +33,13 @@ class Tools
     static function displayDate($d) { return date('d.m.Y', strtotime($d)); }
 }
 class Validate { static function isLoadedObject($o) { return is_object($o) && !empty($o->id); } }
-class Link { function getModuleLink($m, $c, $p = [], $s = null) { return "https://shop.test/module/$m/$c"; } }
+class Link { function getModuleLink($m, $c, $p = [], $s = null) { return "https://shop.test/module/$m/$c"; } function getImageLink($rw, $ids, $type = null) { return "https://shop.test/" . explode('-', $ids)[1] . "-$type/$rw.jpg"; } }
+class ImageType { static function getFormattedName($n) { return $n . '_default'; } }
+class Media { static $defs = []; static function addJsDef($a) { self::$defs = array_merge(self::$defs, $a); } }
 class FakeLocale { function formatPrice($a, $iso) { return number_format($a, 2, ',', ' ') . ($iso === 'PLN' ? ' zł' : ' ' . $iso); } }
 class Cookie { public $v = ['id_guest' => 9]; function __get($k) { return isset($this->v[$k]) ? $this->v[$k] : null; } function __set($k, $x) { $this->v[$k] = $x; } }
-class Customer { public $id = 5, $firstname = 'Anna', $secure_key = 'sk', $logged = true; function isLogged() { return $this->logged; } }
-class Ctl { public $php_self = 'index'; public $css = []; function registerStylesheet($i, $p, $o = []) { $this->css[$i] = $p; } }
+class Customer { public $id = 5, $firstname = 'Anna', $lastname = '', $email = '', $secure_key = 'sk', $logged = true; function isLogged() { return $this->logged; } }
+class Ctl { public $php_self = 'index'; public $css = [], $js = []; function registerStylesheet($i, $p, $o = []) { $this->css[$i] = $p; } function registerJavascript($i, $p, $o = []) { $this->js[$i] = $p; } }
 class Context
 {
     public $link, $customer, $cart, $language, $currency, $shop, $cookie, $smarty, $controller; static $c;
@@ -64,16 +66,16 @@ class Product
 }
 class Address
 {
-    static $all = [];  // id => [id_customer, deleted]
-    public $id, $id_customer, $deleted;
-    function __construct($id = null) { if (isset(self::$all[$id])) { $this->id = $id; $this->id_customer = self::$all[$id][0]; $this->deleted = self::$all[$id][1]; } }
+    static $all = [];  // id => [id_customer, deleted, fields]
+    public $id, $id_customer, $deleted, $address1 = '', $address2 = '', $postcode = '', $city = '';
+    function __construct($id = null) { if (isset(self::$all[$id])) { $this->id = $id; $this->id_customer = self::$all[$id][0]; $this->deleted = self::$all[$id][1]; foreach (isset(self::$all[$id][2]) ? self::$all[$id][2] : [] as $k => $v) { $this->$k = $v; } } }
     static function getFirstCustomerAddressId($c) { return 0; }
 }
 class Carrier
 {
     static $all = [];  // id => [id_reference, deleted, active]
-    public $id, $id_reference, $deleted, $active;
-    function __construct($id = null) { if (isset(self::$all[$id])) { $this->id = $id; list($this->id_reference, $this->deleted, $this->active) = self::$all[$id]; } }
+    public $id, $id_reference, $deleted, $active, $name;
+    function __construct($id = null, $lang = null) { if (isset(self::$all[$id])) { $this->id = $id; list($this->id_reference, $this->deleted, $this->active) = self::$all[$id]; $this->name = 'Kurier ' . $id; } }
     static function getCarrierByReference($ref) { foreach (self::$all as $id => $c) { if ($c[0] == $ref && !$c[1]) { return new Carrier($id); } } return false; }
 }
 /** A cart kept in the real cart_product table, with PrestaShop's stock and minimum checks. */
@@ -97,6 +99,9 @@ class Cart
     function getProducts($refresh = false) { return Db::getInstance()->executeS("SELECT 1 id_shop, id_product, id_product_attribute, quantity cart_quantity, quantity * 10 total_wt FROM rot_cart_product WHERE id_cart = {$this->id} ORDER BY id_product"); }
     function getDeliveryOptionList() { $o = []; foreach (self::$deliverable as $c) { $o[$this->id_address_delivery][$c . ','] = []; } return $o; }
     function setDeliveryOption($o) { $this->delivery_option = json_encode($o); }
+    public $shipping = 0.0;
+    function getDeliveryOption($a = null, $b = false) { return $this->delivery_option ? json_decode($this->delivery_option, true) : false; }
+    function getTotalShippingCost($a = null, $b = true) { return $this->shipping; }
 }
 class AddressChecksum { function generateChecksum($a) { return sha1('a' . $a->id); } }
 class CartChecksum
@@ -120,11 +125,15 @@ require SPC_MODULE . '/classes/SpcCartAnswer.php';
 require SPC_MODULE . '/classes/SpcReorder.php';
 
 $db = Db::getInstance();
-foreach (['orders', 'order_detail', 'product_attribute', 'cart', 'cart_product'] as $t) { $db->execute("DROP TABLE IF EXISTS rot_$t"); }
+foreach (['orders', 'order_detail', 'product_attribute', 'cart', 'cart_product', 'image_shop', 'product_lang'] as $t) { $db->execute("DROP TABLE IF EXISTS rot_$t"); }
 $db->execute('CREATE TABLE rot_orders (id_order INT PRIMARY KEY, id_customer INT, id_shop INT, valid TINYINT, date_add DATETIME, total_paid_tax_incl DECIMAL(20,6), id_currency INT, id_carrier INT, id_address_delivery INT, id_address_invoice INT)');
 $db->execute('CREATE TABLE rot_order_detail (id_order_detail INT AUTO_INCREMENT PRIMARY KEY, id_order INT, product_id INT, product_attribute_id INT, product_quantity INT, product_quantity_refunded INT DEFAULT 0, product_name VARCHAR(255), id_customization INT DEFAULT 0)');
 $db->execute('CREATE TABLE rot_product_attribute (id_product_attribute INT, id_product INT)');
 $db->execute('CREATE TABLE rot_cart (id_cart INT AUTO_INCREMENT PRIMARY KEY, id_customer INT, checkout_session_data MEDIUMTEXT)');
+$db->execute('CREATE TABLE rot_image_shop (id_image INT, id_product INT, id_shop INT, cover TINYINT)');
+$db->execute('CREATE TABLE rot_product_lang (id_product INT, id_lang INT, id_shop INT, link_rewrite VARCHAR(128))');
+$db->execute("INSERT INTO rot_image_shop VALUES (70, 7, 1, 1), (71, 7, 1, 0), (80, 8, 1, 1)");
+$db->execute("INSERT INTO rot_product_lang VALUES (7, 1, 1, 'kimchi'), (8, 1, 1, 'zakwas')");
 $db->execute('CREATE TABLE rot_cart_product (id_cart INT, id_product INT, id_product_attribute INT, quantity INT, PRIMARY KEY (id_cart, id_product, id_product_attribute))');
 
 // customer 5: an older order, a cancelled newer one (not valid), and the last valid one
@@ -134,7 +143,7 @@ $db->execute("INSERT INTO rot_order_detail (id_order, product_id, product_attrib
     (102, 10, 0, 1, 0, 'Grawerowany słoik', 77), (102, 11, 0, 1, 0, 'Pierogi (sold out)', 0), (102, 12, 0, 1, 0, 'Old product', 0), (102, 13, 0, 4, 0, 'Kefir', 0)");
 $db->execute('INSERT INTO rot_product_attribute VALUES (40, 8)');
 Product::$all = [7 => [1, 1, 10], 8 => [1, 1, 10], 9 => [1, 1, 10], 10 => [1, 1, 10], 11 => [1, 1, 0], 12 => [0, 1, 10], 13 => [1, 1, 10]];
-Address::$all = [11 => [5, 0], 12 => [5, 0], 13 => [6, 0], 14 => [5, 1]];
+Address::$all = [11 => [5, 0, ['address1' => 'ul. Długa 5', 'postcode' => '00-001', 'city' => 'Warszawa']], 12 => [5, 0, ['address1' => 'Firma Sp. z o.o.', 'address2' => 'ul. Krótka 1', 'postcode' => '30-002', 'city' => 'Kraków']], 13 => [6, 0], 14 => [5, 1]];
 Carrier::$all = [3 => [3, 1, 1], 8 => [3, 0, 1], 9 => [9, 0, 1]];  // carrier 3 was edited: now 8
 Cart::$deliverable = [8, 9];
 
@@ -186,8 +195,10 @@ ok($card['id_order'] === 102 && $card['total'] === '189,50 zł' && $card['date']
 $html = $part->show('home');
 echo '    ', trim(preg_replace('/\s+/', ' ', strip_tags($html))), "\n";
 ok(strpos($html, 'action="https://shop.test/module/speedpackcore/reorder" method="post"') !== false && strpos($html, 'name="token" value="tok123"') !== false && strpos($html, 'data-spc-reorder') !== false, 'a form posting to the reorder endpoint with the shop token');
-ok(strpos($html, 'Zakwas &lt;b&gt;buraczany&lt;/b&gt; - 1 l') !== false && strpos($html, '<b>') === false, 'product names shown as text');
-ok(strpos($html, 'Welcome back, Anna!') !== false && strpos($html, 'and 2 more') !== false && strpos($html, 'straight to payment') !== false, 'greeting, the rest counted, what the tap does');
+ok(strpos($html, 'Zakwas &lt;b&gt;buraczany&lt;/b&gt; - 1 l') !== false && strpos($html, '<b>buraczany') === false, 'product names shown as text');
+ok(strpos($html, 'Welcome back, Anna!') !== false && strpos($html, 'and 2 more') !== false && strpos($html, 'Straight to payment') !== false, 'greeting, the rest counted, what the tap does');
+ok(count($card['thumbs']) === 2 && $card['thumbs'][0]['src'] === 'https://shop.test/70-small_default/kimchi.jpg' && $card['items'] === 9 && substr_count($html, '<img src="https://shop.test/') === 2 && strpos($html, '+2') !== false, 'the card: cover pictures of the first products (their cover image), "+2", 9 items');
+if (getenv('SPC_REORDER_HTML')) { file_put_contents(getenv('SPC_REORDER_HTML'), $html); }
 $tile = $part->show('account');
 ok(strpos($tile, 'link-item') !== false && strpos($tile, 'Order the same as last time') !== false && strpos($tile, 'spc-reorder-tile') !== false, 'the account tile');
 $full = new Cart(); $full->id_customer = 5; $full->add(); $full->updateQty(1, 7); $ctx->cart = $full;
@@ -208,13 +219,29 @@ ok(isset($ctx->controller->css['spc-reorder']), 'its stylesheet on the home page
 $ctx->controller->css = []; $ctx->controller->php_self = 'product'; $part->hookActionFrontControllerSetMedia();
 ok(!$ctx->controller->css, 'and not on a product page');
 
+// ---------- summaries of finished checkout steps
+$sc = new Cart(); $sc->id_customer = 5; $sc->add(); $sc->id_address_delivery = 11; $sc->id_address_invoice = 12; $sc->setDeliveryOption([11 => '8,']); $sc->shipping = 30.0; $ctx->cart = $sc;
+$ctx->customer->lastname = 'Kowalska'; $ctx->customer->email = 'anna@example.com';
+$sum = SpcReorder::summaries($ctx, ['invoice' => 'faktura: %s', 'free' => 'gratis']);
+echo '    ', json_encode($sum, JSON_UNESCAPED_UNICODE), "\n";
+ok($sum['checkout-personal-information-step'] === 'Anna Kowalska · anna@example.com', 'personal details: name and e-mail');
+ok($sum['checkout-addresses-step'] === 'ul. Długa 5, 00-001 Warszawa · faktura: Firma Sp. z o.o. ul. Krótka 1, 30-002 Kraków', 'addresses: delivery, and the invoice one when it differs');
+ok($sum['checkout-delivery-step'] === 'Kurier 8 · 30,00 zł', 'delivery: the carrier and its price');
+$sc->shipping = 0.0; $sc->id_address_invoice = 11;
+$sum = SpcReorder::summaries($ctx, ['invoice' => 'faktura: %s', 'free' => 'gratis']);
+ok($sum['checkout-delivery-step'] === 'Kurier 8 · gratis' && $sum['checkout-addresses-step'] === 'ul. Długa 5, 00-001 Warszawa', 'free delivery said so; one address once');
+$ctx->controller->php_self = 'order'; Media::$defs = []; $ctx->controller->css = [];
+$part->hookActionFrontControllerSetMedia();
+ok(isset(Media::$defs['spcCheckout']['checkout-delivery-step'], $ctx->controller->css['spc-checkout']), 'on the checkout: the summaries and their stylesheet (even with the reorder card off)');
+if (getenv('SPC_CHECKOUT_JSON')) { file_put_contents(getenv('SPC_CHECKOUT_JSON'), json_encode(SpcReorder::summaries($ctx, ['invoice' => 'faktura: %s', 'free' => 'gratis']), JSON_UNESCAPED_UNICODE)); }
+
 // ---------- settings
 ok($part->install() && Configuration::$v[SpcReorder::K_ENABLED] === 0 && isset(Module::$hooks['displayHome'], Module::$hooks['displayShoppingCartFooter'], Module::$hooks['displayCustomerAccount']), 'install: off until switched on, three hooks');
 Tools::$post = ['submitSpcReorder' => 1, SpcReorder::K_ENABLED => 1, SpcReorder::K_HOME => 0, SpcReorder::K_CART => 1, SpcReorder::K_ACCOUNT => 1, SpcReorder::K_PAYMENT => 0];
 $page = $part->getContent();
-ok(strpos($page, '[ok:') !== false && strpos($page, '<form:submitSpcReorder:5>') !== false && Configuration::$v[SpcReorder::K_HOME] === 0 && Configuration::$v[SpcReorder::K_PAYMENT] === 0, 'settings saved');
+ok(strpos($page, '[ok:') !== false && strpos($page, '<form:submitSpcReorder:6>') !== false && Configuration::$v[SpcReorder::K_HOME] === 0 && Configuration::$v[SpcReorder::K_PAYMENT] === 0, 'settings saved');
 ok($part->summary()['fact'] === 'The last order in the cart in one tap.', 'the overview says what it does');
 ok($part->uninstall() && !isset(Configuration::$v[SpcReorder::K_ENABLED]), 'uninstall removes the settings');
 
-foreach (['orders', 'order_detail', 'product_attribute', 'cart', 'cart_product'] as $t) { $db->execute("DROP TABLE IF EXISTS rot_$t"); }
+foreach (['orders', 'order_detail', 'product_attribute', 'cart', 'cart_product', 'image_shop', 'product_lang'] as $t) { $db->execute("DROP TABLE IF EXISTS rot_$t"); }
 echo "ALL OK\n";

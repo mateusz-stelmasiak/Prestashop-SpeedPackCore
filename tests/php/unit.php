@@ -101,6 +101,10 @@ foreach (['SPC_RO_ENABLED', 'SPC_RO_HOME', 'SPC_RO_CART', 'SPC_RO_ACCOUNT', 'SPC
 unset(Module::$hooks['displayHome'], Module::$hooks['displayShoppingCartFooter'], Module::$hooks['displayCustomerAccount']);
 require_once SPC_MODULE . '/upgrade/upgrade-1.6.0.php';
 assert_ok(upgrade_module_1_6_0($m) && Configuration::get('SPC_RO_ENABLED') === 0 && Configuration::get('SPC_RO_PAYMENT') === 1 && isset(Module::$hooks['displayShoppingCartFooter']), 'upgrade to 1.6.0: Reorder set up (off), its hooks attached');
+// upgrading to 1.6.1: the path on orders and carts, checkout summaries
+unset(Configuration::$v['SPC_BH_PATHS'], Configuration::$v['SPC_RO_SUMMARY'], Module::$hooks['displayAdminOrderMain'], Module::$hooks['displayBackOfficeHeader']);
+require_once SPC_MODULE . '/upgrade/upgrade-1.6.1.php';
+assert_ok(upgrade_module_1_6_1($m) && Configuration::get('SPC_BH_PATHS') === 1 && Configuration::get('SPC_RO_SUMMARY') === 1 && isset(Module::$hooks['displayAdminOrderMain'], Module::$hooks['displayAdminOrder'], Module::$hooks['displayBackOfficeHeader']), 'upgrade to 1.6.1: paths on orders and carts, checkout summaries, their hooks');
 // upgrading from 1.4: Behaviour's settings (recording off), tables and order hook
 foreach (['SPC_BH_ENABLED', 'SPC_BH_CONSENT', 'SPC_BH_CUSTOMER', 'SPC_BH_KEEP'] as $k) { unset(Configuration::$v[$k]); }
 unset(Module::$hooks['actionValidateOrder']);
