@@ -45,6 +45,32 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
   await p.waitForTimeout(400);
   ok(!/1-kategoria/.test(await rules()), 'SmartPrefetch: menu links are left to InstantNav (no double download)');
 
+  // --- InstantNav on a phone: the Classic menu hides the page while open; a tap on a menu link
+  // must bring the page back with the new content, not leave a blank screen
+  const m = await b.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  m.on('pageerror', (e) => errors.push(e.message));
+  await m.goto(BASE + '/pl/');
+  await m.waitForFunction(() => window.instantNavConfig && document.readyState === 'complete');
+  await m.waitForTimeout(300);
+  await m.evaluate(() => { window.__marker = 1; });
+  await m.tap('#menu-icon');
+  ok(await m.evaluate(() => getComputedStyle(document.getElementById('wrapper')).display === 'none'), 'phone: the open menu hides the page (as Classic does)');
+  await m.tap('#mobile_top_menu_wrapper .navbar-toggler');
+  await m.waitForTimeout(300);
+  ok(await m.evaluate(() => location.pathname === '/pl/' && document.getElementById('sub2').style.display === 'block'), 'phone: the expand control opens the sub-menu, no navigation');
+  await m.tap('#mobile_top_menu_wrapper a[href="/pl/3-kategoria.html"]');
+  await m.waitForTimeout(1200);
+  const ph = await m.evaluate(() => {
+    const vis = (id) => { const el = document.getElementById(id); return getComputedStyle(el).display !== 'none' && el.offsetHeight > 0; };
+    return { swapped: window.__marker === 1, path: location.pathname, h1: (document.querySelector('#wrapper h1') || {}).textContent,
+      wrapper: vis('wrapper'), footer: vis('footer'), menu: document.getElementById('mobile_top_menu_wrapper').style.display, open: document.getElementById('header').classList.contains('is-open') };
+  });
+  ok(ph.swapped && ph.path === '/pl/3-kategoria.html' && ph.h1 === '/pl/3-kategoria.html', 'phone: a menu tap swaps the new page in ' + JSON.stringify(ph));
+  ok(ph.wrapper && ph.footer, 'phone: the page is visible after the tap (no blank screen)');
+  ok(ph.menu === 'none' && !ph.open, 'phone: the menu is closed');
+  await m.tap('#menu-icon');
+  ok(await m.evaluate(() => document.getElementById('mobile_top_menu_wrapper').style.display === 'block'), 'phone: the menu opens again afterwards');
+
   ok(errors.length === 0, 'no script errors ' + JSON.stringify(errors));
   await b.close();
   console.log(failed ? failed + ' FAILED' : 'ALL OK');

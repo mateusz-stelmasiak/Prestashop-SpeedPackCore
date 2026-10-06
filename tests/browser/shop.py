@@ -53,6 +53,27 @@ EVIL = {
 }
 
 
+# The phone menu as PrestaShop's Classic theme builds it: a panel in the header with the same
+# depth-0 links (the expand control sits inside the parent's link), and a menu button that hides
+# the page itself while the panel is open -- Classic's toggleMobileMenu(), without jQuery.
+MOBILE_MENU = ('<span id="menu-icon">&#9776;</span><div id="mobile_top_menu_wrapper" style="display:none">'
+               + ''.join('<div><a data-depth="0" href="/pl/%d-kategoria.html">%s Mobilna %d</a>%s</div>' % (
+                   i, '<span class="navbar-toggler" data-toggle="collapse" data-target="#sub%d">+</span>' % i if i == 2 else '', i,
+                   '<ul id="sub2" style="display:none"><li><a data-depth="1" href="/pl/21-pod.html">Pod</a></li></ul>' if i == 2 else '')
+                   for i in range(1, 5)) + '</div>')
+CLASSIC_MENU_JS = """<script>
+document.getElementById('menu-icon').addEventListener('click', function () {
+  var w = document.getElementById('mobile_top_menu_wrapper'), open = w.style.display === 'none';
+  w.style.display = open ? 'block' : 'none';
+  document.getElementById('header').classList.toggle('is-open');
+  ['notifications', 'wrapper', 'footer'].forEach(function (id) { document.getElementById(id).style.display = open ? 'none' : ''; });
+});
+document.querySelectorAll('[data-toggle=collapse]').forEach(function (t) {
+  t.addEventListener('click', function (e) { e.preventDefault(); var u = document.querySelector(t.getAttribute('data-target')); u.style.display = u.style.display === 'none' ? 'block' : 'none'; });
+});
+</script>"""
+
+
 def page(path, mode):
     links = ''.join('<a data-depth="0" href="/pl/%d-kategoria.html">Kategoria %d</a> ' % (i, i) for i in range(1, 7))
     cards = ''.join('<div class="card"><svg width="160" height="160"><rect width="160" height="160" fill="#%02x6a4e"/></svg><p>Produkt %d</p></div>' % (40 + i * 20, i) for i in range(8))
@@ -61,9 +82,12 @@ def page(path, mode):
         add += '<script>window.smartPrefetchConfig=%s</script><script src="/modules/speedpackcore/views/js/smartprefetch.js" defer></script>' % json.dumps(SP)
     if mode in ('all', 'nav_instantnav'):
         add += '<script>window.instantNavConfig=%s</script><script src="/modules/speedpackcore/views/js/instantnav.js" defer></script>' % json.dumps(NAV)
-    return ('<!doctype html><html><head><meta charset="utf-8"><title>%s</title><style>#header a{margin:8px;display:inline-block}.card{display:inline-block;margin:6px}</style></head>'
-            '<body><div id="header"><b>SHOP</b> %s <a href="/pl/koszyk">Koszyk</a></div><div id="wrapper">%s<h1>%s</h1>%s</div>%s%s</body></html>') % (
-        path, links, EVIL.get(path.strip('/').split('/')[-1].replace('.html', ''), ''), path, cards, add, REPORT)
+    return ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>'
+            '<style>#header a{margin:8px;display:inline-block}.card{display:inline-block;margin:6px}#menu-icon{display:none}'
+            '@media(max-width:767px){.desk{display:none}#menu-icon{display:inline-block;padding:10px}}</style></head>'
+            '<body><div id="header"><b>SHOP</b> <span class="desk">%s</span> <a href="/pl/koszyk">Koszyk</a>%s</div>'
+            '<div id="notifications"></div><div id="wrapper">%s<h1>%s</h1>%s</div><div id="footer">Stopka</div>%s%s%s</body></html>') % (
+        path, links, MOBILE_MENU, EVIL.get(path.strip('/').split('/')[-1].replace('.html', ''), ''), path, cards, add, REPORT, CLASSIC_MENU_JS)
 
 
 class H(http.server.BaseHTTPRequestHandler):

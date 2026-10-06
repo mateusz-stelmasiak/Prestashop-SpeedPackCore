@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.4.1
+
+- **InstantNav on phones:** a tap on a link in the phone menu left a blank page until a reload. Classic (and themes built on it) hides the page while its phone menu is open and shows it again only from its own menu button; InstantNav closed the menu panel but left the page hidden. The page, footer and notifications now come back with the menu closing, at the tap, so the loading placeholder shows too. Covered by a new phone-sized browser test.
+
 ## SpeedPack Core 1.4.0
 
 **The speed audit now really compares configurations:**

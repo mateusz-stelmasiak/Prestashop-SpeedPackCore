@@ -40,7 +40,7 @@
 
     if (cfg.enabled === false) { return; }
 
-    var BUILD = '2026-09-21a';
+    var BUILD = '2026-10-06a';
 
     var ORIGIN = window.location.origin;
     var here = strip(window.location.href);
@@ -1072,13 +1072,33 @@
         });
     }
 
-    /* The phone menu is a panel the theme opens; after a swap it would sit
-     * there over the new page. */
+    /**
+     * Close the phone menu the way the theme's own menu button would.
+     *
+     * Opening it, Classic (and themes built on it) hides the page itself:
+     *
+     *     $('#notifications, #wrapper, #footer').hide();
+     *
+     * and shows it again only from that button. Hiding just the menu panel
+     * left the swapped-in content inside a hidden #wrapper: a blank page
+     * until a reload. So the page comes back with the panel.
+     */
     function closeMobileMenu() {
         var panel = document.getElementById('mobile_top_menu_wrapper');
-        if (panel && panel.style.display !== 'none') {
-            panel.style.display = 'none';
-        }
+        var header = document.getElementById('header');
+        var open = (panel && panel.style.display !== 'none' && panel.offsetHeight > 0) ||
+            (header && header.classList.contains('is-open'));
+        if (!open) { return; }
+
+        if (panel) { panel.style.display = 'none'; }
+        if (header) { header.classList.remove('is-open'); }
+
+        ['notifications', 'wrapper', 'footer'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el && el.style.display === 'none') { el.style.display = ''; }
+        });
+        var host = document.querySelector(region);
+        if (host && host.style.display === 'none') { host.style.display = ''; }
     }
 
     /**
@@ -1203,6 +1223,8 @@
         busy = true;
 
         var cached = fresh(store[url]);
+        /* At the tap, so the page (and its placeholder) shows while loading. */
+        closeMobileMenu();
         armSkeleton(url);
         startBar();
 
