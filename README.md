@@ -26,7 +26,7 @@
 | **InstantCart** | Waiting after "Add to cart" and +/− | **20 clicks → 1 request** (4.75 s → 1.73 s on a slow server) |
 | **CartSpeed** | Repeated queries on the cart page | **73 → 4** address lookups per cart page |
 
-<sub>InstantCart and CartSpeed figures were measured on the Alhambra shop. SmartPrefetch and InstantNav figures are the modules' default settings. The built-in **speed audit** measures all five on your own shop.</sub>
+<sub>InstantCart and CartSpeed figures were measured on the Alhambra shop. SmartPrefetch and InstantNav figures are the modules' default settings. The built-in **speed audit** measures all five on your own shop. Full numbers in [Benchmarks](#benchmarks).</sub>
 
 ## Why merchants use it
 
@@ -123,6 +123,56 @@
 - **Stands aside** when SpeedPack Core's InstantCart already handles the cart page, so two modules never answer one click
 
 <p align="center"><img src="media/asynccart-cards.png" alt="AsyncCart's message cards: Removed from cart with Undo, and Quantity not changed" width="70%"></p>
+
+## Benchmarks
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/benchmark-dark.png">
+  <img src="media/benchmark-light.png" alt="Click to page shown by hover time: plain link about 580 ms; SmartPrefetch 2.0 536, 321, 130 and 35 ms; SmartPrefetch 1.x 936, 736, 176 and 172 ms; InstantNav 390, 201, 29 and 18 ms" width="100%">
+</picture>
+
+**How it was measured.** A mock shop whose pages answer after 400 ms (an uncached PrestaShop on an ordinary host) and a real headless Chromium. Each run rests the pointer on a menu link for a set time, clicks, and times **click → first paint of the new page** from inside the page itself, so no DevTools connection is attached (Chrome switches prerendering off whenever one is). Every click goes to an address no earlier run used, so no cache can answer for it. Medians of 6–8 clicks per cell, 2026-10-06.
+
+#### Click to page shown, desktop (ms, lower is better)
+
+| Hover before the click | 100 ms | 300 ms | 600 ms | 1000 ms |
+|---|---:|---:|---:|---:|
+| Plain link, no prefetch | 572 | 573 | 592 | 588 |
+| `<link rel=prefetch>` (the common "instant page" trick) | 944 | 729 | 592 | 564 |
+| Speculation Rules prefetch | 536 | 329 | 176 | 176 |
+| Speculation Rules prerender | 511 | 340 | 128 | 32 |
+| SmartPrefetch 1.x (service worker) | 936 | 736 | 176 | 172 |
+| **SmartPrefetch 2.0** (Chrome, Edge) | **536** | **321** | **130** | **35** |
+| **SmartPrefetch 2.0** (other browsers, service worker) | **533** | **337** | **173** | **184** |
+| **InstantNav** (menu links) | **390** | **201** | **29** | **18** |
+
+#### On a slow connection (150 ms round trip, 4 Mbit/s)
+
+| Hover before the click | 100 ms | 300 ms |
+|---|---:|---:|
+| Plain link | 721 | 720 |
+| Speculation Rules prefetch | 688 | 485 |
+| Speculation Rules prerender | 772 | 460 |
+| **InstantNav** | **548** | **347** |
+
+#### What the numbers say
+
+- **`<link rel=prefetch>` makes PrestaShop slower.** PrestaShop pages carry no cache lifetime, so the browser downloads the prefetched page again on the click, and a quick click waits for both. SmartPrefetch 2.0 no longer uses it.
+- **Prefetch alone stops at ~175 ms**: the HTML is ready, but the browser still has to build the page. Only a prerender (or InstantNav's swap) gets below 50 ms.
+- **Prerender needs time.** Started at the first hover, it is no better than prefetch on a quick click, and worse on a slow connection where it competes for bandwidth. SmartPrefetch 2.0 therefore prefetches at 65 ms and prerenders only once the pointer has stayed 250 ms, at most 4 pages per visit and never on touch.
+- **SmartPrefetch 1.x was slower than no prefetch on quick clicks** (936 ms at 100 ms): a click arriving mid-download fetched the page a second time. 2.0 waits for the download already running instead.
+- **InstantNav is the fastest on menu links** because only the content changes: no new page, no re-running the theme's scripts, the header stays. With both on, SmartPrefetch leaves menu links to InstantNav.
+
+#### Measured on a real shop (Alhambra)
+
+| | Without | With SpeedPack |
+|---|---:|---:|
+| 20 quick "+" clicks on a cart line, slow server (InstantCart) | 20 requests, 4.75 s | 1 request, 1.73 s |
+| Address lookups on one cart page (CartSpeed) | 73 queries | 4 queries |
+
+#### Measure your own shop
+
+Shops differ: the theme, the modules and the server decide the real numbers. The **speed audit** on the settings page runs the same kind of test on your shop in about a minute: server answer time of five of your pages with and without the data cache, click to page shown through your menu with no speed-ups, SmartPrefetch, InstantNav and everything, add to cart through PrestaShop's cart page against InstantCart, and CartSpeed's query count. Results are kept, so a chart shows the effect of later changes. The audit times a quick 0.3 s hover; a longer hover is faster still in Chrome and Edge (prerender, see above), which a test window opened from the back office cannot show.
 
 ## Installation
 
