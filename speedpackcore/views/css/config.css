@@ -6,7 +6,9 @@
  * @license   https://opensource.org/licenses/MIT MIT License
  */
 .spc-head { margin: 0 0 18px; padding: 18px 20px 0; border: 1px solid #dbe6e9; border-radius: 6px; background: #fff; }
-.spc-brand { display: flex; gap: 14px; align-items: center; }
+.spc-brand { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.spc-ask { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.spc-ask svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
 .spc-logo { width: 44px; height: 44px; flex: none; }
 .spc-logo rect { fill: #1d2a5b; }
 .spc-logo path { fill: #7fd3e6; }

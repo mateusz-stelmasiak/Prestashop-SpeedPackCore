@@ -12,6 +12,7 @@ $vars['url'] = '/__audit';
 $vars['home'] = '/pl/';
 $vars['history'] = '[]';
 $vars['first'] = true;
+$vars['auto'] = false; // shop.py serves /admin-auto with it on
 $sm = new Smarty();
 $sm->setCompileDir(sys_get_temp_dir() . '/spc-render-' . getmypid());
 $sm->registerPlugin('function', 'l', function ($p) { return htmlspecialchars($p['s'], ENT_QUOTES, 'UTF-8'); });

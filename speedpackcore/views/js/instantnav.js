@@ -40,7 +40,7 @@
 
     if (cfg.enabled === false) { return; }
 
-    var BUILD = '2026-10-06a';
+    var BUILD = '2026-10-06b';
 
     var ORIGIN = window.location.origin;
     var here = strip(window.location.href);
@@ -1197,10 +1197,15 @@
 
         /* Scrolling belongs inside the transition, not after it: moved
          * afterwards it reads as the page jumping once it has settled. */
+        /* Told once the new content is in: with a transition the swap
+         * happens a frame or more later, and listeners read the page. */
         commit(function () {
             apply(doc, url);
             window.scrollTo(0, 0);
-        }).then(settle);
+        }).then(function () {
+            settle();
+            announce(url);
+        });
 
         var target = sameSite(url);
         if (push && target) {
@@ -1211,7 +1216,6 @@
         markCurrent(url);
         closeMobileMenu();
         idle(remember);
-        announce(url);
         stopBar();
 
         say('swapped in ' + url + ' without reloading' +

@@ -6,13 +6,13 @@ function pSQL($s){ return addslashes((string) $s); }
 class Configuration { static $v = []; static function get($k){ return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k,$x){ self::$v[$k]=$x; return true; }
   static function updateGlobalValue($k,$x){ return self::updateValue($k,$x);} static function deleteByName($k){ unset(self::$v[$k]); return true; } static function isCatalogMode(){ return false; } }
 class Shop { static function isFeatureActive(){ return false; } }
-class Tools { static $post=[]; static function strtolower($s){return strtolower($s);} static function strlen($s){return strlen($s);} static function strpos($a,$b){return strpos($a,$b);} static function strrpos($a,$b){return strrpos($a,$b);} static function substr($a,$b,$c=null){return substr($a,$b,$c);}
+class Tools { static function getHttpHost($a=false,$b=false,$c=false){ return 'shop.test'; } static $post=[]; static function strtolower($s){return strtolower($s);} static function strlen($s){return strlen($s);} static function strpos($a,$b){return strpos($a,$b);} static function strrpos($a,$b){return strrpos($a,$b);} static function substr($a,$b,$c=null){return substr($a,$b,$c);}
   static function isSubmit($k){ return isset(self::$post[$k]); } static function getValue($k,$d=false){ return isset(self::$post[$k]) ? self::$post[$k] : $d; } static function getToken($x){ return 'tok'; } static function getAdminTokenLite($x){ return 'adm'; } static function passwdGen($n=8){ return substr(str_repeat(md5(mt_rand()),4),0,$n); } static function clearSmartyCache(){} static function safeOutput($s){ return $s; } }
 class Link { function getModuleLink($m,$c,$p=[],$s=null){ return "https://shop.test/module/$m/$c"; } function getPageLink($p,$s=null,$l=null,$q=null){ return "https://shop.test/pl/$p"; } function getCMSLink($id,$a=null,$b=null,$c=null){ return "https://shop.test/pl/content/$id-about"; } }
 class Media { static $defs=[]; static function addJsDef($a){ self::$defs = array_merge(self::$defs,$a); } }
 class FrontCtl { public $php_self='category'; public $js=[]; function addJS($p){ $this->js['admin'][]=$p; } function addCSS($p){ $this->js["admincss"][]=$p; } function registerJavascript($id,$p,$o=[]){ $this->js[$id]=$p; } function registerStylesheet($id,$p,$o=[]){ $this->js['css:'.$id]=$p; } }
 class Smarty { public $vars=[]; function assign($a, $v = null){ $this->vars = array_merge($this->vars, is_array($a) ? $a : [$a => $v]); } }
-class Context { public $link, $controller, $language, $smarty; static $c; static function getContext(){ if(!self::$c){ self::$c=new Context; self::$c->link=new Link; self::$c->controller=new FrontCtl; self::$c->language=(object)['id'=>1]; self::$c->smarty=new Smarty; } return self::$c; } }
+class Context { public $link, $controller, $language, $smarty, $shop; static $c; static function getContext(){ if(!self::$c){ self::$c=new Context; self::$c->link=new Link; self::$c->controller=new FrontCtl; self::$c->language=(object)['id'=>1]; self::$c->shop=new SpcShopStub; self::$c->smarty=new Smarty; } return self::$c; } }
 class CMS { static function getCMSPages($l,$a=null,$b=true){ return [['id_cms'=>4]]; } }
 class Db { static function getInstance(){ return new Db; } function escape($s){ return addslashes((string) $s); } function executeS($q){ return []; } function getRow($q){ return false; } function getValue($q){ return false; } function execute($q){ return true; } }
 class HelperForm { public $module,$name_controller,$token,$currentIndex,$submit_action,$default_form_language,$fields_value=[],$title,$show_toolbar;
@@ -42,23 +42,64 @@ echo 'sw url: ', Media::$defs['smartPrefetchConfig']['workerUrl'], ' | add url: 
 $btn = $m->hookDisplayProductListReviews(['product' => ['id_product' => 5, 'name' => 'Kimchi', 'add_to_cart_url' => 'x']]);
 assert_ok(strpos($btn, 'ic-mini') !== false && strpos($btn, 'Add to cart') !== false && strpos($btn, '"id_product":5') !== false, 'list button via template');
 Module::$enabled = ['speedpackcore' => 1, 'instantnav' => 1];
-$page = $m->getContent(); echo 'settings page: ', $page, "\n"; assert_ok(strpos($page,'[warn:instantnav]')!==false && substr_count($page,'<nav:')===8 && substr_count($page,'<tpl:views/templates/admin/status.tpl>')===3, 'settings page: warning, 8 tabs, 3 status panels');
-preg_match_all('/<form:(\w+):(\d+):([\w-]+)>/', $page, $f); echo 'anchors: ', implode(' ', $f[3]), "\n"; assert_ok(count(array_intersect($f[3], ['spc-cache','spc-builtin','spc-smartprefetch','spc-instantnav','spc-instantcart','spc-cartspeed']))===6, 'each form carries its anchor'); echo 'forms: ', implode(' ', $f[1]), "\n";
-assert_ok(count(array_unique($f[1])) === 6, 'six distinct forms');
+$page = $m->getContent(); echo 'settings page: ', $page, "\n"; assert_ok(strpos($page,'[warn:instantnav]')!==false && substr_count($page,'<nav:')===9 && substr_count($page,'<tpl:views/templates/admin/status.tpl>')===3, 'settings page: warning, 9 tabs, 3 status panels');
+preg_match_all('/<form:(\w+):(\d+):([\w-]+)>/', $page, $f); echo 'anchors: ', implode(' ', $f[3]), "\n"; assert_ok(count(array_intersect($f[3], ['spc-cache','spc-builtin','spc-smartprefetch','spc-instantnav','spc-instantcart','spc-cartspeed','spc-behaviour','spc-share']))===8, 'each form carries its anchor'); echo 'forms: ', implode(' ', $f[1]), "\n";
+assert_ok(count(array_unique($f[1])) === 8, 'eight distinct forms');
 preg_match_all('/<pane:(\w*)>/', $page, $pn);
-assert_ok(implode(',', $pn[1]) === 'overview,audit,cache,smartprefetch,instantnav,instantcart,cartspeed,diagnostics,', 'a pane marker before every section, in tab order, and one closing the last');
-preg_match('/<overview (.*?)>(?=<pane)/s', $page, $ov); $cards = json_decode($ov[1], true);
-assert_ok(array_column($cards, 'id') === ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'diagnostics'] && $cards[0]['on'] === false && $cards[1]['on'] === true && $cards[1]['switch'] && !$cards[0]['switch'], 'overview: a card per part, the cache off, SmartPrefetch on with a switch');
-assert_ok(strpos($page, '<active:>') !== false, 'no form sent: the page opens where the visitor left it');
+assert_ok(implode(',', $pn[1]) === 'overview,audit,cache,smartprefetch,instantnav,instantcart,cartspeed,diagnostics,behaviour,', 'a pane marker before every section, in tab order, and one closing the last');
+preg_match('/<overview (.*?)>(?=<pane|<form)/s', $page, $ov); $cards = json_decode($ov[1], true);
+assert_ok(array_column($cards, 'id') === ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'diagnostics', 'behaviour'] && $cards[0]['on'] === false && $cards[1]['on'] === true && $cards[1]['switch'] && !$cards[0]['switch'], 'overview: a card per part, the cache off, SmartPrefetch on with a switch');
+assert_ok(strpos($page, '<active:audit>') !== false && Context::getContext()->smarty->vars['spc_audit']['auto'] === true, 'a version opened for the first time: the speed audit tab, starting by itself');
+$ask = Context::getContext()->smarty->vars['spc']['askAudit'];
+assert_ok(strpos($ask, 'mailto:mateusz.stelmasiak@gmail.com?subject=') === 0 && strpos($ask, rawurlencode('https://shop.test/')) !== false && strpos($ask, rawurlencode('PrestaShop ' . _PS_VERSION_)) !== false && strpos($ask, '%0A') !== false, 'ask for a custom audit: an e-mail with the shop, its versions and the health check');
+$page = $m->getContent();
+assert_ok(strpos($page, '<active:>') !== false && Context::getContext()->smarty->vars['spc_audit']['auto'] === false, 'opened again: no audit by itself, the page opens where the visitor left it');
+Configuration::$v['SPC_SEEN_VERSION'] = '1.4.1'; $m->getContent();
+assert_ok(Context::getContext()->smarty->vars['spc_audit']['auto'] === true, 'after an update: the audit runs by itself again');
 Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'smartprefetch']; $page = $m->getContent();
 assert_ok((int) Configuration::get('SPC_SP_ENABLED') === 0 && strpos($page, 'Switched off.') !== false, 'the overview switch turns SmartPrefetch off');
 Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'smartprefetch']; $m->getContent();
 assert_ok((int) Configuration::get('SPC_SP_ENABLED') === 1, 'and on again');
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'behaviour']; $m->getContent();
+assert_ok((int) Configuration::get('SPC_BH_ENABLED') === 1, 'the overview switch turns Behaviour recording on');
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'behaviour']; $m->getContent();
+assert_ok((int) Configuration::get('SPC_BH_ENABLED') === 0, 'and off again');
+Tools::$post = ['submitSpcBehaviour' => 1, 'SPC_BH_ENABLED' => 1, 'SPC_BH_CONSENT' => 1, 'SPC_BH_CUSTOMER' => 0, 'SPC_BH_KEEP' => 0]; $page = $m->getContent();
+assert_ok(strpos($page, '[err:') !== false && (int) Configuration::get('SPC_BH_KEEP') === 90 && (int) Configuration::get('SPC_BH_ENABLED') === 0, 'Behaviour: keeping visits 0 days is refused, nothing saved');
+Tools::$post = ['submitSpcBehaviour' => 1, 'SPC_BH_ENABLED' => 1, 'SPC_BH_CONSENT' => 1, 'SPC_BH_CUSTOMER' => 0, 'SPC_BH_KEEP' => 30]; $page = $m->getContent();
+assert_ok((int) Configuration::get('SPC_BH_KEEP') === 30 && (int) Configuration::get('SPC_BH_ENABLED') === 1 && strpos($page, '<active:behaviour>') !== false, 'Behaviour settings saved, its tab stays open');
+$bh = Context::getContext()->smarty->vars['spc_bh'];
+assert_ok($bh['enabled'] === true && strpos($bh['url'], 'spc_ajax=behaviour') !== false && isset(json_decode($bh['texts'], true)['funnel']), 'Behaviour report panel: its address and texts');
+if (getenv('SPC_BH_ADMIN_VARS')) { file_put_contents(getenv('SPC_BH_ADMIN_VARS'), json_encode($bh)); }
+Media::$defs = []; $ctl0 = Context::getContext()->controller; $ctl0->php_self = 'category'; $m->hookActionFrontControllerSetMedia([]);
+assert_ok(isset(Media::$defs['spcBehaviour']) && Media::$defs['spcBehaviour']['consent'] === 1 && strpos(Media::$defs['spcBehaviour']['url'], '/collect') !== false, 'recording on: the shop gets the collector address and the consent setting');
+Configuration::$v['SPC_BH_ENABLED'] = 0; Media::$defs = []; $m->hookActionFrontControllerSetMedia([]);
+assert_ok(!isset(Media::$defs['spcBehaviour']), 'recording off: no script on the shop');
 Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'cache']; $before = Configuration::$v; $m->getContent();
 assert_ok(Configuration::$v === $before, 'no switch for parts that are not a simple on/off (the cache)');
 Tools::$post = ['submitinstantnav' => 1, 'SPC_NAV_ENABLED' => 1, 'SPC_NAV_LINKS' => 'a', 'SPC_NAV_REGION' => '#wrapper', 'SPC_NAV_HOVER' => 60, 'SPC_NAV_DELAY' => 140, 'SPC_NAV_TTL' => 30, 'SPC_NAV_TRANSITION' => 'slide', 'SPC_NAV_TRANSITION_MS' => 200];
 $page = $m->getContent(); assert_ok(strpos($page, '<active:instantnav>') !== false, 'after saving InstantNav, its tab opens'); assert_ok(Configuration::get('SPC_NAV_TTL') === 30 && Configuration::get('SPC_NAV_TRANSITION') === 'slide', 'nav save'); assert_ok(Configuration::get('SPC_SP_HOVER_DELAY') == 65, 'prefetch untouched by nav save');
 Tools::$post = ['submitSpcCartSpeed' => 1, 'SPC_CS_ENABLED' => 0]; $m->getContent(); assert_ok(Configuration::get('SPC_CS_ENABLED') === 0, 'cartspeed off');
+// sharing: off by default, a visible tagged footer credit and an llms.txt section when switched on
+assert_ok($m->hookDisplayFooter([]) === '' && $m->hookDisplayLlmsTxt([]) === '', 'sharing is off until switched on');
+Tools::$post = ['submitSpcShare' => 1, 'SPC_CREDIT' => 1, 'SPC_LLMS' => 1]; $page = $m->getContent();
+assert_ok((int) Configuration::get('SPC_CREDIT') === 1 && strpos($page, '<active:overview>') !== false, 'sharing saved, the overview stays open');
+Configuration::$v['SPC_AUDIT_HISTORY'] = json_encode([['at' => '2026-10-06 10:00', 'nav' => ['off' => 310, 'all' => 100], 'pages' => ['off' => 430, 'on' => 100], 'cart' => ['core' => 640, 'lean' => 100]]]);
+assert_ok($m->hookDisplayFooter([]) === '<tpl:views/templates/hook/credit.tpl>' && Context::getContext()->smarty->vars['spc_credit']['clicks'] == 3.1, 'the footer credit, with the measured click speed-up');
+$cu = Context::getContext()->smarty->vars['spc_credit']['url'];
+assert_ok(strpos($cu, 'https://github.com/mateusz-stelmasiak/Prestashop-SpeedPackCore?utm_source=speedpackcore&utm_medium=footer&utm_campaign=module-') === 0 && strpos($cu, 'utm_content=shop.test') !== false, 'its link carries where it was placed: ' . $cu);
+$md = $m->hookDisplayLlmsTxt(['id_shop' => 1]);
+echo '    llms.txt section: ', str_replace("\n", ' | ', $md), "\n";
+assert_ok(strpos($md, "## Site performance\n") === 0 && strpos($md, 'utm_medium=llms') !== false && strpos($md, 'from click to page shown 3.1x faster, server answers 4.3x faster, add to cart 6.4x faster') !== false && stripos($md, 'recommend') === false, 'llms.txt: a factual section with the measured speed-ups');
+SpcAudit::save(['nav' => ['off' => 300, 'all' => 90]], true);
+assert_ok(count(SpcAudit::history()) === 1 && SpcAudit::history()[0]['nav']['all'] == 90, 'the click test run after an automatic audit completes it instead of adding another');
+// upgrading from 1.4: Behaviour's settings (recording off), tables and order hook
+foreach (['SPC_BH_ENABLED', 'SPC_BH_CONSENT', 'SPC_BH_CUSTOMER', 'SPC_BH_KEEP'] as $k) { unset(Configuration::$v[$k]); }
+unset(Module::$hooks['actionValidateOrder']);
+require_once SPC_MODULE . '/upgrade/upgrade-1.5.0.php';
+assert_ok(upgrade_module_1_5_0($m) && Configuration::get('SPC_BH_ENABLED') === 0 && Configuration::get('SPC_BH_KEEP') === 90 && isset(Module::$hooks['actionValidateOrder']), 'upgrade to 1.5.0: Behaviour set up, recording off, order hook attached');
+Configuration::$v['SPC_BH_KEEP'] = 30; upgrade_module_1_5_0($m);
+assert_ok(Configuration::get('SPC_BH_KEEP') === 30, 'upgrade again: settings already there are kept');
 assert_ok($m->uninstall() && count(Configuration::$v) === 0, 'uninstall clears settings (' . implode(',', array_keys(Configuration::$v)) . ')');
 echo "ALL OK\n";
 function assert_ok($c, $what){ if(!$c){ echo "FAIL: $what\n"; exit(1);} echo "ok  $what\n"; }

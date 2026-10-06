@@ -10,7 +10,7 @@ cd tests && composer install   # Smarty, to render the module's own templates
 
 | Suite | What it checks | Needs |
 |---|---|---|
-| `php/unit.php` | Install and uninstall, hooks, the settings page: tabs, panes in order, the overview cards, one-click switches, the tab that stays open after saving | PHP |
+| `php/unit.php` | Install and uninstall, hooks, upgrades, the settings page: tabs, panes in order, the overview cards, one-click switches, the tab that stays open after saving, Behaviour's settings | PHP |
 | `php/asynccart.php` | AsyncCart: install, script only on the cart page, standing aside when SpeedPack Core's InstantCart handles the cart, settings validation, the quantity endpoint (stock, minimum, fallbacks) and Undo | PHP |
 | `php/cache.php` | The data cache against a real Redis: settings, `parameters.php` written and restored, the override, hit rate | Redis, phpredis |
 | `php/audit.php` | The speed audit: the signed cookie, `SpcAudit::apply()` (data cache off, `X-SpeedPack-Audit` header), each server step against `php/mock/audit-shop.php`, the page-cache detection, saving and history | PHP, curl |
@@ -18,6 +18,9 @@ cd tests && composer install   # Smarty, to render the module's own templates
 | `browser/audit.e2e.js normal` | The audit's click test in Chromium: every configuration really applied, the shop window cleared before each click, warm-up and rotated rounds | Node, Playwright |
 | `browser/audit.e2e.js pagecache` | The same behind a page cache: nothing counted, the warning shown | Node, Playwright |
 | `browser/shop.e2e.js` | InstantNav refuses pages with active content and swaps clean ones; SmartPrefetch's prefetch and prerender rules, the cart left out | Node, Playwright |
+| `php/behaviour.php` | Behaviour against a real MariaDB: recording (retried beacons, the 30-minute gap, junk), sources, and every report figure for scripted visits: KPIs, local time buckets, pages, routes, paths, paths of success, funnel, failure points, search, filters, one visit, clean-up | MariaDB / MySQL |
+| `browser/behaviour.e2e.js` | The tracker in Chromium (views, InstantNav swaps, engaged and idle time, cart, checkout steps, pay, errors, searches, campaign tags; nothing from robots, before consent or while prerendered) and the Behaviour tab drawing a real report | Node, Playwright |
+| `php/behaviour-replay.php` | What the tracker sent in Chromium, stored by the real store: every view and event kept | MariaDB / MySQL |
 
 ## Settings
 

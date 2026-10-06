@@ -17,6 +17,10 @@
       <h2>SpeedPack Core <small>{$spc.version|escape:'html':'UTF-8'}</small></h2>
       <p>{l s='Speed-ups for the whole shop, each with its own switch and settings.' mod='speedpackcore'}</p>
     </div>
+    <a class="btn btn-default spc-ask" href="{$spc.askAudit|escape:'html':'UTF-8'}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3z"/><path d="M3 7l9 6 9-6"/></svg>
+      {l s='Ask for a custom audit of my site' mod='speedpackcore'}
+    </a>
   </div>
   <ul class="spc-tabs" role="tablist">
     {foreach from=$spc.tabs item=tab}

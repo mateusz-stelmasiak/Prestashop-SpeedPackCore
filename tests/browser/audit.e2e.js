@@ -1,6 +1,7 @@
 // The speed audit's click test in a real Chromium against tests/browser/shop.py.
 //   node audit.e2e.js PORT normal      every mode is a different configuration: all counted
 //   node audit.e2e.js PORT pagecache   the shop ignores the cookie: nothing counted, a warning
+//   node audit.e2e.js PORT auto        just after an install or update: starts by itself, clicks on one press
 const { chromium } = require(process.env.SPC_PLAYWRIGHT || 'playwright');
 const BASE = 'http://127.0.0.1:' + process.argv[2];
 const MODE = process.argv[3] || 'normal';
@@ -14,6 +15,29 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
   const errors = [];
   p.on('pageerror', (e) => errors.push('admin: ' + e.message));
   ctx.on('page', (pp) => pp.on('pageerror', (e) => errors.push('shop: ' + e.message)));
+  if (MODE === 'auto') {
+    // just after an install or update: the audit starts by itself, without a shop window (a
+    // browser opens one only on a click); one press then adds the click test to the same audit
+    await p.goto(BASE + '/admin-auto');
+    await p.waitForSelector('[data-spc-clicks]', { timeout: 120000 });
+    let saved = JSON.parse(await (await fetch(BASE + '/__saved')).text());
+    let log = (await (await fetch(BASE + '/__log')).text()).split('\n').filter(Boolean);
+    const notes = await p.$$eval('[data-spc-note]', (l) => l.map((x) => x.textContent));
+    ok(ctx.pages().length === 1 && !log.some((l) => l.startsWith('start ')), 'started by itself, with no shop window (no blocked pop-up)');
+    ok(saved.length === 1 && saved[0].pages && saved[0].cart && saved[0].cartspeed && Object.keys(saved[0].nav).length === 0, 'the server measurements are done and saved: ' + JSON.stringify(saved[0]));
+    ok(notes.filter((n) => /Measure the clicks too/.test(n)).length === 2, 'the click cards say how to add the click test');
+    await p.click('[data-spc-clicks]');
+    await p.waitForFunction(() => /Done|stopped/i.test(document.querySelector('[data-spc-say]').textContent), null, { timeout: 180000 });
+    saved = JSON.parse(await (await fetch(BASE + '/__saved')).text());
+    log = (await (await fetch(BASE + '/__log')).text()).split('\n').filter(Boolean);
+    ok(log.filter((l) => l.startsWith('start ')).length === 16, 'one press: the click test in a shop window (16 start pages)');
+    ok(saved.length === 1 && saved[0].replaced && ['off', 'smartprefetch', 'instantnav', 'all'].every((m) => typeof saved[0].nav[m] === 'number') && saved[0].pages, 'it completes the same audit: one saved run with the clicks and the server figures');
+    ok(await p.evaluate(() => !document.querySelector('[data-spc-clicks]')), 'the button is gone');
+    ok(errors.length === 0, 'no script errors ' + JSON.stringify(errors));
+    await b.close();
+    console.log(failed ? failed + ' FAILED' : 'ALL OK');
+    process.exit(failed ? 1 : 0);
+  }
   await p.goto(BASE + '/admin');
   const t0 = Date.now();
   await p.click('[data-spc-start]');

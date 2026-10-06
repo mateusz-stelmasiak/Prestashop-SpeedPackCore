@@ -23,6 +23,7 @@ class Configuration { static $v = []; static function get($k, $l = null) { retur
 class Shop { static function isFeatureActive() { return false; } }
 class Tools
 {
+    static function getHttpHost($a = false, $b = false, $c = false) { return 'shop.test'; }
     static $post = [];
     static function getValue($k, $d = false) { return isset(self::$post[$k]) ? self::$post[$k] : $d; }
     static function isSubmit($k) { return isset(self::$post[$k]); }
@@ -41,7 +42,7 @@ class Link
 }
 class Media { static function addJsDef($a) {} }
 class Ctl { public $php_self = 'index'; public $js = []; function addJS($p) { $this->js[] = $p; } function addCSS($p) { $this->js[] = $p; } function registerJavascript($i, $p, $o = []) {} function registerStylesheet($i, $p, $o = []) {} }
-class ShopObj { public $id = 1, $id_shop_group = 1; function getBaseURL($ssl = true) { return $GLOBALS['BASE'] . '/'; } }
+class ShopObj { public $id = 1, $id_shop_group = 1, $theme_name = 'classic'; function getBaseURL($ssl = true) { return $GLOBALS['BASE'] . '/'; } }
 class Context
 {
     public $link, $controller, $language, $smarty, $shop; static $c;
@@ -184,8 +185,14 @@ Configuration::$v['SPC_AUDIT_DONE'] = 1;
 SpcAudit::save(['cache' => 'redis', 'pages' => ['off' => 412, 'on' => 96], 'cart' => ['core' => 388, 'lean' => 61], 'cartspeed' => ['off' => 73, 'on' => 1], 'nav' => ['off' => 581, 'smartprefetch' => 321, 'instantnav' => 188, 'all' => 187]]);
 $html = $m->getContent();
 ok(strpos($html, '3.1×') !== false && strpos($html, '4.3×') !== false && strpos($html, '6.4×') !== false, 'overview: the last audit as "× faster" for clicks, server and cart');
-ok(substr_count($html, 'data-spc-pane-start=') === 9 && substr_count($html, 'data-spc-tab=') === 8, 'tabs: 8, and 9 section markers (the last closes)');
+ok(substr_count($html, 'data-spc-pane-start=') === 10 && substr_count($html, 'data-spc-tab=') === 9 && strpos($html, 'data-spc-bh-texts=') !== false, 'tabs: 9, and 10 section markers, the Behaviour report panel (the last closes)');
 file_put_contents(getenv('SPC_SETTINGS_HTML') ?: SPC_TMP . '/settings.html', $html);
+ok(strpos($html, 'href="mailto:mateusz.stelmasiak@gmail.com?subject=') !== false && strpos($html, 'Ask for a custom audit of my site') !== false, 'the head: ask for a custom audit (an e-mail link)');
+Configuration::set('SPC_CREDIT', 1);
+$credit = $m->hookDisplayFooter([]);
+echo '    credit: ', trim(preg_replace('/\s+/', ' ', $credit)), "\n";
+ok(strpos($credit, 'rel="nofollow noopener"') !== false && strpos($credit, 'utm_source=speedpackcore&amp;utm_medium=footer') !== false && strpos($credit, '× faster from click to page on this shop') !== false, 'the footer credit, rendered: visible, nofollow, tagged, with the measured speed-up');
+Configuration::set('SPC_CREDIT', 0);
 ok(strpos($html, 'Health check: server and PrestaShop') !== false && strpos($html, 'data-spc-care') !== false && strpos($html, 'For your host') !== false, 'settings page: the health check panels render');
 ok(strpos($html, 'Database query cache') !== false, 'Cache status: the query cache line');
 ok(strpos($html, 'Switch off multi-front optimizations') !== false, 'one-click fix offered for multi-front');

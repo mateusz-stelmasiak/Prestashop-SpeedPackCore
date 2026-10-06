@@ -1,5 +1,19 @@
 # Changelog
 
+## SpeedPack Core 1.5.0
+
+**Behaviour**, a new part: what shoppers do on the shop, page by page.
+- A small script (2.9 KB gzipped) reports each page shown – InstantNav swaps included, prerendered pages only once shown – with engaged time and scroll depth, and add to cart, checkout steps, the pay button, errors and empty searches. The order hook marks the visit an order came from, with its total.
+- The Behaviour tab: KPIs, visits over time in 15-minute, hour, day or week buckets, pages with engaged time, exits and conversion, time on a page, most taken routes, most common paths, paths of success (with time and pages to an order, and cart to order for new against returning shoppers), a funnel through every checkout step, and failure points (where carts were left, empty searches, 404s, errors). Filters for range, device, source, outcome and shopper; a search by product, category, page, address, sequence (`Kimchi > koszyk`) or customer; any visit page by page.
+- No cookie of its own, no IP address, no browser string. Off until switched on; optional "only after analytics consent" and customer linking; visits kept 90 days by default.
+- InstantNav tells listeners about a swapped page once its content is in (with a transition it used to be a frame early).
+
+**The speed audit runs by itself** the first time the settings page opens after an install or an update, so the effect shows at once. The click test needs a shop window, which a browser opens only on a click: one press on "Measure the clicks too" adds it to the same audit.
+
+**Ask for a custom audit of my site:** a button in the head of the settings page writes an e-mail to the author with the shop, its versions, the last audit and the health check.
+
+**Share the speed** (opt-in, off by default): a small visible footer credit with the shop's measured speed-up (a nofollow link), and a "Site performance" section for llms.txt through the new `displayLlmsTxt` hook. Links carry UTM tags naming where they were placed.
+
 ## SpeedPack Core 1.4.1
 
 - **InstantNav on phones:** a tap on a link in the phone menu left a blank page until a reload. Classic (and themes built on it) hides the page while its phone menu is open and shows it again only from its own menu button; InstantNav closed the menu panel but left the page hidden. The page, footer and notifications now come back with the menu closing, at the tap, so the loading placeholder shows too. Covered by a new phone-sized browser test.

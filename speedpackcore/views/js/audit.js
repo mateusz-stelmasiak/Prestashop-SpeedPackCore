@@ -49,6 +49,10 @@
     var say = box.querySelector('[data-spc-say]');
     var clock = box.querySelector('[data-spc-clock]');
     var running = false;
+    // a version opened for the first time: the audit starts by itself, without the click test
+    // (a browser opens the shop window only on a click), which one press adds afterwards
+    var auto = box.getAttribute('data-spc-auto') === '1';
+    var lastPlan = null, lastResults = null, clicksButton = null;
 
     /* ---------------------------------------------------------------- *
      *  Small helpers
@@ -461,15 +465,30 @@
      *  The audit
      * ---------------------------------------------------------------- */
 
-    function run() {
+    function navNames() { return { off: t.clickWithout, smartprefetch: t.clickSp, instantnav: t.clickNav, all: t.clickAll }; }
+
+    /** The click test's results into the cards. */
+    function takeNav(nav, results, plan) {
+      state('smartprefetch', null);
+      state('instantnav', null);
+      if (nav.error) { note('smartprefetch', fmt(t.failed, nav.error)); note('instantnav', fmt(t.failed, nav.error)); }
+      if (nav.notApplied) { note('smartprefetch', t.navCached); note('instantnav', t.navCached); }
+      ['off', 'smartprefetch', 'instantnav', 'all'].forEach(function (m) { if (typeof nav[m] === 'number') results.nav[m] = nav[m]; });
+      show({ nav: results.nav }, plan);
+    }
+
+    function run(opts) {
       if (running) return;
+      opts = opts && opts.auto ? opts : {};
       running = true;
+      if (clicksButton) { clicksButton.remove(); clicksButton = null; }
+      var later = false;
 
       // the window has to open now, while the click still counts as the admin's own
       var popup = null;
       var sameOrigin = false;
       try { sameOrigin = new URL(home, location.href).origin === location.origin; } catch (e) { sameOrigin = false; }
-      if (sameOrigin) {
+      if (sameOrigin && !opts.auto) {
         popup = window.open('', 'spc_audit', 'width=1280,height=860');
         if (popup) {
           try {
@@ -508,20 +527,14 @@
 
         // 1. clicks
         if (!sameOrigin) { note('smartprefetch', t.otherOrigin); note('instantnav', t.otherOrigin); return null; }
+        if (opts.auto) { later = true; note('smartprefetch', t.clicksLater); note('instantnav', t.clicksLater); return null; }
         if (!popup) { note('smartprefetch', t.popupBlocked); note('instantnav', t.popupBlocked); return null; }
-        var names = { off: t.clickWithout, smartprefetch: t.clickSp, instantnav: t.clickNav, all: t.clickAll };
+        var names = navNames();
         return clickTest(popup, plan, function (mode) {
           state('smartprefetch', mode === 'off' || mode === 'smartprefetch' || mode === 'all' ? 'running' : null);
           state('instantnav', mode === 'off' || mode === 'instantnav' || mode === 'all' ? 'running' : null);
           advance(fmt(t.nav, names[mode]));
-        }).then(function (nav) {
-          state('smartprefetch', null);
-          state('instantnav', null);
-          if (nav.error) { note('smartprefetch', fmt(t.failed, nav.error)); note('instantnav', fmt(t.failed, nav.error)); }
-          if (nav.notApplied) { note('smartprefetch', t.navCached); note('instantnav', t.navCached); }
-          ['off', 'smartprefetch', 'instantnav', 'all'].forEach(function (m) { if (typeof nav[m] === 'number') results.nav[m] = nav[m]; });
-          show({ nav: results.nav }, plan);
-        });
+        }).then(function (nav) { takeNav(nav, results, plan); });
       }).then(function () {
         // 2. pages, one at a time
         state('cache', 'running');
@@ -564,6 +577,8 @@
         advance(t.save);
         return post('save', { results: JSON.stringify(results) }).then(function (r) {
           if (r.history) { history = r.history; drawHistory(history); }
+          lastPlan = plan;
+          lastResults = results;
         });
       }).then(function () {
         fill.style.width = '100%';
@@ -576,14 +591,69 @@
         running = false;
         button.disabled = false;
         buttonLabel.textContent = t.again;
+        if (later && lastPlan) { offerClicks(); }
       });
     }
 
-    button.addEventListener('click', run);
+    /** After an automatic audit: one press runs the click test and completes the same audit. */
+    function offerClicks() {
+      clicksButton = el('button', 'btn btn-primary btn-lg spc-audit-clicks', t.clicksNow);
+      clicksButton.type = 'button';
+      clicksButton.setAttribute('data-spc-clicks', '');
+      button.parentNode.insertBefore(clicksButton, button);
+      clicksButton.addEventListener('click', runClicks);
+    }
+
+    function runClicks() {
+      if (running || !lastPlan) return;
+      var popup = window.open('', 'spc_audit', 'width=1280,height=860');
+      if (!popup) { note('smartprefetch', t.popupBlocked); note('instantnav', t.popupBlocked); return; }
+      try { popup.document.title = 'SpeedPack Core'; popup.document.body.textContent = t.popupWait; } catch (e) { /* its own page */ }
+      running = true;
+      clicksButton.remove();
+      clicksButton = null;
+      button.disabled = true;
+      progress.hidden = false;
+      fill.style.width = '0%';
+      note('smartprefetch', '');
+      note('instantnav', '');
+      var plan = lastPlan, results = lastResults;
+      var navModes = 1 + (plan.enabled.smartprefetch ? 1 : 0) + (plan.enabled.instantnav ? 1 : 0);
+      if (navModes > 1) navModes++;
+      var total = navModes * (CLICKS + 1), units = 0, names = navNames(), t0 = Date.now();
+      clickTest(popup, plan, function (mode) {
+        state('smartprefetch', mode === 'off' || mode === 'smartprefetch' || mode === 'all' ? 'running' : null);
+        state('instantnav', mode === 'off' || mode === 'instantnav' || mode === 'all' ? 'running' : null);
+        units++;
+        fill.style.width = Math.min(100, Math.round(100 * units / total)) + '%';
+        say.textContent = fmt(t.nav, names[mode]);
+      }).then(function (nav) {
+        takeNav(nav, results, plan);
+        say.textContent = t.save;
+        return post('save', { results: JSON.stringify(results), replace: 1 }).then(function (r) {
+          if (r.history) { history = r.history; drawHistory(history); }
+        });
+      }).then(function () {
+        fill.style.width = '100%';
+        say.textContent = fmt(t.done, Math.round((Date.now() - t0) / 1000));
+      }, function (e) {
+        say.textContent = fmt(t.stopped, e.message);
+        try { if (!popup.closed) popup.close(); } catch (x) { /* gone */ }
+      }).then(function () {
+        running = false;
+        button.disabled = false;
+      });
+    }
+
+    button.addEventListener('click', function () { run(); });
     if (history.length) {
       show(history[history.length - 1], null);
       drawHistory(history);
       buttonLabel.textContent = t.again;
+    }
+    if (auto) {
+      run({ auto: true });
+      say.textContent = t.autoNote;
     }
   }
 

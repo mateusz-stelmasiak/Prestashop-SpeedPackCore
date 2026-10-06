@@ -6,6 +6,7 @@
  *   InstantNav     menu clicks swap the page content instead of reloading the page
  *   InstantCart    add to cart answers at once; quick clicks become one request
  *   CartSpeed      remembers address lookups for the page (an Address override)
+ *   Behaviour      what shoppers do: time on each page, routes, paths to an order, failure points
  *
  * Each part lives in classes/ and can be switched off on its own on the configuration page. The
  * speed audit (classes/SpcAudit.php) measures the shop with each part off and on.
@@ -32,10 +33,21 @@ require_once dirname(__FILE__) . '/classes/SpcHealth.php';
 require_once dirname(__FILE__) . '/classes/SpcCare.php';
 require_once dirname(__FILE__) . '/classes/SpcWeight.php';
 require_once dirname(__FILE__) . '/classes/SpcDiagnostics.php';
+require_once dirname(__FILE__) . '/classes/SpcBehaviour.php';
 
 class SpeedPackCore extends Module
 {
     public const K_CARTSPEED = 'SPC_CS_ENABLED';
+
+    /** the version whose settings page was last opened: a new one runs the speed audit by itself */
+    public const K_SEEN = 'SPC_SEEN_VERSION';
+
+    /** opt-in: a small visible credit in the shop footer, and a section in the shop's llms.txt */
+    public const K_CREDIT = 'SPC_CREDIT';
+    public const K_LLMS = 'SPC_LLMS';
+
+    public const SITE = 'https://github.com/mateusz-stelmasiak/Prestashop-SpeedPackCore';
+    public const AUDIT_EMAIL = 'mateusz.stelmasiak@gmail.com';
 
     /** the separate modules this pack replaces; with both on, every part would run twice */
     public const REPLACES = ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed'];
@@ -55,11 +67,17 @@ class SpeedPackCore extends Module
     /** @var SpcDiagnostics the health check: on the settings page only, never on the shop */
     private $diagnostics;
 
+    /** @var SpcBehaviour */
+    private $behaviour;
+
+    /** @var bool the settings page of a version opened for the first time */
+    private $autoAudit = false;
+
     public function __construct()
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.4.1';
+        $this->version = '1.5.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -77,6 +95,7 @@ class SpeedPackCore extends Module
         $this->instantNav = new SpcInstantNav($this, $this->context, 'InstantNav');
         $this->instantCart = new SpcInstantCart($this, $this->context, 'InstantCart');
         $this->diagnostics = new SpcDiagnostics($this, $this->context, $this->l('Health check'));
+        $this->behaviour = new SpcBehaviour($this, $this->context, $this->l('Behaviour'));
     }
 
     /** @return SpcFeature[] by id */
@@ -87,6 +106,7 @@ class SpeedPackCore extends Module
             'smartprefetch' => $this->smartPrefetch,
             'instantnav' => $this->instantNav,
             'instantcart' => $this->instantCart,
+            'behaviour' => $this->behaviour,
         ];
     }
 
@@ -120,7 +140,7 @@ class SpeedPackCore extends Module
             }
         }
         Configuration::deleteByName(self::K_CARTSPEED);
-        foreach ([SpcAudit::K_KEY, SpcAudit::K_HISTORY, SpcAudit::K_DONE] as $key) {
+        foreach ([SpcAudit::K_KEY, SpcAudit::K_HISTORY, SpcAudit::K_DONE, self::K_SEEN, self::K_CREDIT, self::K_LLMS] as $key) {
             Configuration::deleteByName($key);
         }
 
@@ -132,7 +152,10 @@ class SpeedPackCore extends Module
         return $this->registerHook('actionDispatcherBefore')
             && $this->registerHook('actionFrontControllerSetMedia')
             && $this->registerHook('displayHeader')
-            && $this->registerHook('displayProductListReviews');
+            && $this->registerHook('displayProductListReviews')
+            && $this->registerHook('actionValidateOrder')
+            && $this->registerHook('displayFooter')
+            && $this->registerHook('displayLlmsTxt');
     }
 
     /* ------------------------------------------------------------------ *
@@ -178,6 +201,11 @@ class SpeedPackCore extends Module
         return SpcAudit::off('instantcart') ? '' : $this->instantCart->hookDisplayProductListReviews($params);
     }
 
+    public function hookActionValidateOrder($params)
+    {
+        $this->behaviour->hookActionValidateOrder($params);
+    }
+
     /* ------------------------------------------------------------------ *
      *  Back office
      * ------------------------------------------------------------------ */
@@ -190,11 +218,19 @@ class SpeedPackCore extends Module
         if (in_array(Tools::getValue('spc_ajax'), ['care_scan', 'care', 'analyze', 'weight'], true)) {
             $this->diagnostics->ajax((string) Tools::getValue('spc_ajax'));
         }
+        if (Tools::getValue('spc_ajax') === 'behaviour') {
+            $this->behaviour->ajax();
+        }
         if (Tools::getValue('spc_ajax') === 'audit') {
             $this->ajaxAudit((string) Tools::getValue('step'));
         }
         $out = '';
-        foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews'] as $hook) {
+        // a new version (installed or updated): the speed audit runs by itself, to show what it does
+        $this->autoAudit = Configuration::get(self::K_SEEN) !== $this->version;
+        if ($this->autoAudit) {
+            Configuration::updateValue(self::K_SEEN, $this->version);
+        }
+        foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews', 'actionValidateOrder', 'displayFooter', 'displayLlmsTxt'] as $hook) {
             if (!$this->isRegisteredInHook($hook)) {
                 $this->registerHook($hook);
             }
@@ -204,6 +240,11 @@ class SpeedPackCore extends Module
             $out .= $this->displayConfirmation($this->l('Settings updated.'));
         }
 
+        if (Tools::isSubmit('submitSpcShare')) {
+            Configuration::updateValue(self::K_CREDIT, Tools::getValue(self::K_CREDIT) ? 1 : 0);
+            Configuration::updateValue(self::K_LLMS, Tools::getValue(self::K_LLMS) ? 1 : 0);
+            $out .= $this->displayConfirmation($this->l('Settings updated.'));
+        }
         if (Tools::isSubmit('submitSpcToggle')) {
             $out .= $this->toggle((string) Tools::getValue('spc_part'));
         }
@@ -217,32 +258,45 @@ class SpeedPackCore extends Module
 
         // every section of the page, in tab order; each starts with a marker (pane.tpl) that
         // views/js/config.js turns into a tab
+        // the speed-ups first, then the health check, then Behaviour (not a speed-up: a report)
         $panes = ['audit' => $this->renderAudit()];
-        foreach ($this->parts() as $id => $part) {
+        foreach ($this->speedUps() as $id => $part) {
             $panes[$id] = $part->getContent();
         }
         $panes['cartspeed'] = $this->cartSpeedForm();
         $panes['diagnostics'] = $this->diagnostics->getContent();
+        $panes['behaviour'] = $this->behaviour->getContent();
 
         $tabs = [['id' => 'overview', 'title' => $this->l('Overview')], ['id' => 'audit', 'title' => $this->l('Speed audit')]];
-        foreach ($this->parts() as $id => $part) {
+        foreach ($this->speedUps() as $id => $part) {
             $tabs[] = ['id' => $id, 'title' => $part->displayName];
         }
         $tabs[] = ['id' => 'cartspeed', 'title' => 'CartSpeed'];
         $tabs[] = ['id' => 'diagnostics', 'title' => $this->diagnostics->displayName];
+        $tabs[] = ['id' => 'behaviour', 'title' => $this->behaviour->displayName];
 
         $this->context->smarty->assign(['spc' => [
             'version' => $this->version,
             'twice' => implode(', ', $twice),
             'tabs' => $tabs,
             'active' => $this->activeTab(),
+            'askAudit' => $this->askAuditLink(),
         ]]);
-        $html = $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $this->pane('overview') . $this->renderOverview();
+        $html = $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $this->pane('overview') . $this->renderOverview() . $this->shareForm();
         foreach ($panes as $id => $content) {
             $html .= $this->pane($id) . $content;
         }
 
         return $html . $this->pane('');
+    }
+
+    /** @return SpcFeature[] the parts that make the shop faster, by id */
+    private function speedUps()
+    {
+        $parts = $this->parts();
+        unset($parts['behaviour']);
+
+        return $parts;
     }
 
     /** The marker that starts a tab's section ('' ends the last one). */
@@ -263,6 +317,8 @@ class SpeedPackCore extends Module
             'instantcart' => ['submitInstantCart'],
             'cartspeed' => ['submitSpcCartSpeed'],
             'diagnostics' => ['submitSpcMultiFront'],
+            'behaviour' => ['submitSpcBehaviour'],
+            'overview' => ['submitSpcShare'],
         ];
         foreach ($forms as $tab => $submits) {
             foreach ($submits as $submit) {
@@ -272,13 +328,13 @@ class SpeedPackCore extends Module
             }
         }
 
-        return '';
+        return $this->autoAudit ? 'audit' : '';
     }
 
     /** The one-click switches of the overview. */
     private function toggle($part)
     {
-        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED];
+        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED, 'behaviour' => SpcBehaviour::K_ENABLED];
         if (!isset($keys[$part])) {
             return '';
         }
@@ -292,12 +348,13 @@ class SpeedPackCore extends Module
     private function summaries()
     {
         $out = [];
-        foreach ($this->parts() as $id => $part) {
+        foreach ($this->speedUps() as $id => $part) {
             $out[$id] = $part->summary();
         }
         $cs = (bool) Configuration::get(self::K_CARTSPEED);
         $out['cartspeed'] = ['on' => $cs, 'status' => $cs ? $this->l('On') : $this->l('Off'), 'fact' => $this->l('Address lookups of the cart page asked once, not 73 times.')];
         $out['diagnostics'] = $this->diagnostics->summary();
+        $out['behaviour'] = $this->behaviour->summary();
 
         return $out;
     }
@@ -306,7 +363,7 @@ class SpeedPackCore extends Module
     {
         $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
         $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
-        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName];
+        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName];
         $what = [
             'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
             'smartprefetch' => $this->l('The next page before the click.'),
@@ -314,6 +371,7 @@ class SpeedPackCore extends Module
             'instantcart' => $this->l('The cart without waiting.'),
             'cartspeed' => $this->l('A lighter cart page.'),
             'diagnostics' => $this->l('The PrestaShop tuning guide, checked on this server.'),
+            'behaviour' => $this->l('What shoppers do, page by page.'),
         ];
         $cards = [];
         foreach ($this->summaries() as $id => $sum) {
@@ -321,28 +379,14 @@ class SpeedPackCore extends Module
                 'id' => $id,
                 'name' => $names[$id],
                 'what' => $what[$id],
-                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed'], true),
+                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'behaviour'], true),
                 'level' => isset($sum['level']) ? $sum['level'] : ($sum['on'] ? 'ok' : 'off'),
             ];
         }
-        $history = SpcAudit::history();
-        $last = $history ? $history[count($history) - 1] : null;
-        $gain = function ($pair, $before, $after) {
-            if (!is_array($pair) || empty($pair[$after]) || empty($pair[$before]) || $pair[$before] <= $pair[$after]) {
-                return null;
-            }
-
-            return round($pair[$before] / $pair[$after], 1);
-        };
         $this->context->smarty->assign('spc_overview', [
             'cards' => $cards,
             'url' => AdminController::$currentIndex . '&configure=' . $this->name . '&token=' . Tools::getAdminTokenLite('AdminModules'),
-            'audit' => $last ? [
-                'at' => $last['at'],
-                'clicks' => $gain(isset($last['nav']) ? $last['nav'] : null, 'off', 'all'),
-                'pages' => $gain(isset($last['pages']) ? $last['pages'] : null, 'off', 'on'),
-                'cart' => $gain(isset($last['cart']) ? $last['cart'] : null, 'core', 'lean'),
-            ] : null,
+            'audit' => $this->gains(),
         ]);
 
         return $this->display(__FILE__, 'views/templates/admin/overview.tpl');
@@ -377,7 +421,7 @@ class SpeedPackCore extends Module
                 break;
             case 'save':
                 $results = json_decode((string) Tools::getValue('results'), true);
-                $answer = is_array($results) ? ['run' => SpcAudit::save($results), 'history' => SpcAudit::history()] : ['error' => 'nothing to save'];
+                $answer = is_array($results) ? ['run' => SpcAudit::save($results, (bool) Tools::getValue('replace')), 'history' => SpcAudit::history()] : ['error' => 'nothing to save'];
                 break;
             default:
                 $answer = ['error' => 'unknown step'];
@@ -427,6 +471,9 @@ class SpeedPackCore extends Module
             'historyClick' => $this->l('Click to page, with SpeedPack'),
             'historyPage' => $this->l('Server answer, with SpeedPack'),
             'stopped' => $this->l('The audit stopped: %s'),
+            'autoNote' => $this->l('SpeedPack Core was just installed or updated, so it is measuring this shop now.'),
+            'clicksLater' => $this->l('The click test needs a shop window, which the browser opens only on a click: press "Measure the clicks too".'),
+            'clicksNow' => $this->l('Measure the clicks too'),
             'prerenderNote' => $this->l('A quick 0.3 s hover. On a longer hover, Chrome and Edge also build the whole page in advance, so it shows almost at once; a test window cannot show that part.'),
         ];
 
@@ -441,9 +488,143 @@ class SpeedPackCore extends Module
             'texts' => json_encode($texts),
             'history' => json_encode(SpcAudit::history()),
             'first' => !Configuration::get(SpcAudit::K_DONE),
+            'auto' => $this->autoAudit,
         ]]);
 
         return $this->display(__FILE__, 'views/templates/admin/audit.tpl');
+    }
+
+    /* ------------------------------------------------------------------ *
+     *  Sharing: a custom audit, the footer credit, llms.txt
+     * ------------------------------------------------------------------ */
+
+    /** A link to the SpeedPack Core site, tagged with where it was placed. */
+    public function siteLink($medium)
+    {
+        $host = (string) Tools::getHttpHost(false, false, true);
+
+        return self::SITE . '?' . http_build_query([
+            'utm_source' => 'speedpackcore',
+            'utm_medium' => $medium,
+            'utm_campaign' => 'module-' . $this->version,
+            'utm_content' => $host,
+        ]);
+    }
+
+    /** The last audit as "× faster" figures (null where not measured). */
+    public function gains()
+    {
+        $history = SpcAudit::history();
+        $last = $history ? $history[count($history) - 1] : null;
+        $gain = function ($pair, $before, $after) {
+            if (!is_array($pair) || empty($pair[$after]) || empty($pair[$before]) || $pair[$before] <= $pair[$after]) {
+                return null;
+            }
+
+            return round($pair[$before] / $pair[$after], 1);
+        };
+
+        return $last ? [
+            'at' => $last['at'],
+            'clicks' => $gain(isset($last['nav']) ? $last['nav'] : null, 'off', 'all'),
+            'pages' => $gain(isset($last['pages']) ? $last['pages'] : null, 'off', 'on'),
+            'cart' => $gain(isset($last['cart']) ? $last['cart'] : null, 'core', 'lean'),
+        ] : null;
+    }
+
+    /**
+     * "Ask for a custom audit of my site": an e-mail to the author, written out with what an
+     * audit needs to start (the shop, its versions, the last measurements).
+     */
+    private function askAuditLink()
+    {
+        $g = $this->gains();
+        $lines = [
+            'Hello,',
+            '',
+            'I would like a custom speed audit of my shop.',
+            '',
+            'Shop: ' . $this->context->shop->getBaseURL(true),
+            'PrestaShop ' . _PS_VERSION_ . ', PHP ' . PHP_VERSION . ', SpeedPack Core ' . $this->version,
+            'Theme: ' . $this->context->shop->theme_name,
+            'Data cache: ' . (Configuration::get(SpcCache::K_BACKEND) ?: 'none'),
+        ];
+        if ($g) {
+            $lines[] = 'Last speed audit (' . $g['at'] . '): clicks ' . ($g['clicks'] ?: '-') . 'x, server ' . ($g['pages'] ?: '-') . 'x, add to cart ' . ($g['cart'] ?: '-') . 'x faster';
+        }
+        $lines[] = 'Health check: ' . $this->diagnostics->summary()['fact'];
+        $lines[] = '';
+        $lines[] = 'What I would like checked:';
+        $lines[] = '';
+
+        return 'mailto:' . self::AUDIT_EMAIL . '?subject=' . rawurlencode('Custom speed audit: ' . Tools::getHttpHost(false, false, true))
+            . '&body=' . rawurlencode(implode("\n", $lines));
+    }
+
+    /** Opt-in sharing: the footer credit and the llms.txt section, both off until switched on. */
+    private function shareForm()
+    {
+        $helper = new HelperForm();
+        $helper->module = $this;
+        $helper->name_controller = $this->name;
+        $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
+        $helper->submit_action = 'submitSpcShare';
+        $helper->default_form_language = (int) Configuration::get('PS_LANG_DEFAULT');
+        $helper->fields_value = [self::K_CREDIT => (int) Configuration::get(self::K_CREDIT), self::K_LLMS => (int) Configuration::get(self::K_LLMS)];
+        $switch = function ($name, $label, $desc) {
+            return ['type' => 'switch', 'name' => $name, 'label' => $label, 'desc' => $desc, 'is_bool' => true,
+                'values' => [['id' => $name . '_on', 'value' => 1, 'label' => $this->l('Yes')], ['id' => $name . '_off', 'value' => 0, 'label' => $this->l('No')]], ];
+        };
+
+        return $helper->generateForm([['form' => [
+            'id_form' => 'spc-share',
+            'legend' => ['title' => $this->l('Share the speed'), 'icon' => 'icon-heart'],
+            'description' => $this->l('Optional, and off unless you switch it on. Each helps other shop owners find SpeedPack Core.'),
+            'input' => [
+                $switch(self::K_CREDIT, $this->l('Credit in the shop footer'), $this->l('One small line in the footer: "Fast pages: SpeedPack Core", with your measured speed-up when there is one. A normal visible link, marked nofollow so it never affects your search ranking.')),
+                $switch(self::K_LLMS, $this->l('Mention in llms.txt'), $this->l('Adds a short "Site performance" section with your measured speed-up to the llms.txt that a llms.txt module generates (one that offers the displayLlmsTxt hook).')),
+            ],
+            'submit' => ['title' => $this->l('Save')],
+        ]]]);
+    }
+
+    public function hookDisplayFooter($params)
+    {
+        if (!(int) Configuration::get(self::K_CREDIT) || SpcAudit::parts() !== null) {
+            return '';
+        }
+        $g = $this->gains();
+        $this->context->smarty->assign('spc_credit', [
+            'url' => $this->siteLink('footer'),
+            'clicks' => $g ? $g['clicks'] : null,
+        ]);
+
+        return $this->display(__FILE__, 'views/templates/hook/credit.tpl');
+    }
+
+    /** A "Site performance" section for the shop's llms.txt (Markdown). */
+    public function hookDisplayLlmsTxt($params)
+    {
+        if (!(int) Configuration::get(self::K_LLMS)) {
+            return '';
+        }
+        $g = $this->gains();
+        $out = "## Site performance\n\n"
+            . '- This shop runs [SpeedPack Core](' . $this->siteLink('llms') . ') for PrestaShop: database results from memory, pages fetched before the click, menu clicks without a reload and an instant cart.' . "\n";
+        if ($g) {
+            $facts = [];
+            foreach (['clicks' => 'from click to page shown %sx faster', 'pages' => 'server answers %sx faster', 'cart' => 'add to cart %sx faster'] as $k => $text) {
+                if ($g[$k]) {
+                    $facts[] = sprintf($text, $g[$k]);
+                }
+            }
+            if ($facts) {
+                $out .= '- Measured on this shop with and without it (' . substr($g['at'], 0, 10) . '): ' . implode(', ', $facts) . ".\n";
+            }
+        }
+
+        return $out;
     }
 
     private function cartSpeedForm()

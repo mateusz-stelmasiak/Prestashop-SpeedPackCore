@@ -437,9 +437,10 @@ class SpcAudit
 
     /**
      * Keep one audit's results: numbers only, in the known shape, so nothing posted can be
-     * stored as anything else.
+     * stored as anything else. $replace: the same audit completed (the click test run after the
+     * rest), so it takes the place of the last one instead of adding another.
      */
-    public static function save(array $raw)
+    public static function save(array $raw, $replace = false)
     {
         $n = function ($v) {
             return is_numeric($v) ? round((float) $v, 1) : null;
@@ -459,6 +460,9 @@ class SpcAudit
             $run['nav'][$mode] = isset($raw['nav'][$mode]) ? $n($raw['nav'][$mode]) : null;
         }
         $list = self::history();
+        if ($replace && $list) {
+            array_pop($list);
+        }
         $list[] = $run;
         $list = array_slice($list, -self::KEEP);
         Configuration::updateValue(self::K_HISTORY, json_encode($list));

@@ -4,6 +4,7 @@
 #
 # /admin            the audit panel (ADMIN_HTML, rendered from the module's audit.tpl by render.php)
 # /admin-go         the same, starting the audit by itself
+# /admin-auto       the same as just after an install or update (data-spc-auto)
 # /__audit          the audit's server steps, answered with fixed numbers (the PHP tests cover them)
 # /pl/...html       shop pages that load SmartPrefetch and InstantNav as the spc_audit cookie says
 #                   (as the module does); with --pagecache every page is the same whatever the
@@ -11,12 +12,17 @@
 # /__log            what the shop served: one line per page, "start|nav|other cookie=..."
 # /__state          what each start page found left in the shop window (service workers, Cache
 #                   Storage, session storage) before it left some of its own
-import http.server, json, os, sys, time, urllib.parse
+# /__collect        Behaviour's collector: keeps what behaviour.js sends; /__collected lists it
+#                   (?clear=1 empties it). Pages take bh_consent=1, bh_bots=1, bh_idle=MS.
+# /bh-admin         the Behaviour tab (BH_ADMIN, rendered by render-bh.php); /__bh answers its
+#                   report and visit requests from BH_REPORT (tests/php/behaviour.php's real
+#                   report), /__bhq lists the requests
+import http.server, json, os, re, sys, time, urllib.parse
 
 PORT, MOD, ADMIN = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 PAGECACHE = '--pagecache' in sys.argv
 DELAY = 0.25
-LOG, STATE, SAVED = [], [], []
+LOG, STATE, SAVED, COLLECT, BHQ = [], [], [], [], []
 SP = {'enabled': True, 'hoverDelay': 65, 'maxTotal': 12, 'maxWarmup': 0, 'warmupSelector': '', 'viewport': False, 'viewportSelector': '', 'fetchFallback': True,
       'workerUrl': '/modules/speedpackcore/views/js/sw.js', 'scope': '/', 'debug': False, 'denyPrefixes': ['/pl/koszyk', '/pl/zamowienie'], 'prerender': True, 'prerenderDelay': 250, 'maxPrerender': 4}
 NAV = {'enabled': True, 'links': '#header a[data-depth="0"]', 'region': '#wrapper', 'prefetch': True, 'hoverDelay': 60, 'skeleton': True, 'skeletonDelay': 140, 'bar': False,
@@ -74,20 +80,53 @@ document.querySelectorAll('[data-toggle=collapse]').forEach(function (t) {
 </script>"""
 
 
-def page(path, mode):
+# PrestaShop's front-end event bus (core.js), as modules and the theme use it
+PS_BUS = """<script>window.prestashop = { _h: {}, page: {}, urls: {},
+  on: function (n, f) { (this._h[n] = this._h[n] || []).push(f); },
+  emit: function (n, d) { (this._h[n] || []).forEach(function (f) { f(d); }); } };</script>"""
+
+CHECKOUT = ('<section id="checkout">' + ''.join(
+    '<section id="checkout-%s-step" class="checkout-step%s"><h2>%s</h2></section>' % (s, ' -current' if i == 0 else '', s)
+    for i, s in enumerate(['personal-information', 'addresses', 'delivery', 'payment']))
+    + '<div id="payment-confirmation"><button type="submit">Zamawiam i płacę</button></div></section>')
+
+
+def body_of(path):
+    """The page type and object as PrestaShop puts them on <body> (id, class)."""
+    m = re.match(r'^/pl/(\d+)-(kategoria|produkt)', path)
+    if m:
+        kind = 'category' if m.group(2) == 'kategoria' else 'product'
+        extra = ' product-id-category-3' if kind == 'product' else ' category-id-parent-2'
+        return kind, '%s-id-%s%s' % (kind, m.group(1), extra)
+    return {'/pl/': 'index', '/pl/koszyk': 'cart', '/pl/zamowienie': 'checkout', '/pl/szukaj': 'search'}.get(path, 'cms'), 'lang-pl'
+
+
+def behaviour(query):
+    q = dict(urllib.parse.parse_qsl(query))
+    cfg = {'url': '/__collect', 'consent': 1 if q.get('bh_consent') else 0, 'skipBots': bool(q.get('bh_bots')), 'idle': int(q.get('bh_idle') or 0)}
+    return '<script>window.spcBehaviour=%s</script><script src="/modules/speedpackcore/views/js/behaviour.js" defer></script>' % json.dumps(cfg)
+
+
+def page(path, mode, query=''):
     links = ''.join('<a data-depth="0" href="/pl/%d-kategoria.html">Kategoria %d</a> ' % (i, i) for i in range(1, 7))
     cards = ''.join('<div class="card"><svg width="160" height="160"><rect width="160" height="160" fill="#%02x6a4e"/></svg><p>Produkt %d</p></div>' % (40 + i * 20, i) for i in range(8))
     add = ''
+    visitor = mode == 'visitor'
+    mode = 'all' if visitor else mode
     if mode in ('all', 'nav_smartprefetch'):
         add += '<script>window.smartPrefetchConfig=%s</script><script src="/modules/speedpackcore/views/js/smartprefetch.js" defer></script>' % json.dumps(SP)
     if mode in ('all', 'nav_instantnav'):
         add += '<script>window.instantNavConfig=%s</script><script src="/modules/speedpackcore/views/js/instantnav.js" defer></script>' % json.dumps(NAV)
+    if visitor:
+        add += behaviour(query)
+    kind, classes = body_of(path)
+    extra = CHECKOUT if kind == 'checkout' else ('<section id="product-search-no-matches">Brak wyników</section>' if kind == 'search' else '')
     return ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>'
             '<style>#header a{margin:8px;display:inline-block}.card{display:inline-block;margin:6px}#menu-icon{display:none}'
             '@media(max-width:767px){.desk{display:none}#menu-icon{display:inline-block;padding:10px}}</style></head>'
-            '<body><div id="header"><b>SHOP</b> <span class="desk">%s</span> <a href="/pl/koszyk">Koszyk</a>%s</div>'
-            '<div id="notifications"></div><div id="wrapper">%s<h1>%s</h1>%s</div><div id="footer">Stopka</div>%s%s%s</body></html>') % (
-        path, links, MOBILE_MENU, EVIL.get(path.strip('/').split('/')[-1].replace('.html', ''), ''), path, cards, add, REPORT, CLASSIC_MENU_JS)
+            '<body id="%s" class="%s">%s<div id="header"><b>SHOP</b> <span class="desk">%s</span> <a href="/pl/koszyk">Koszyk</a>%s</div>'
+            '<div id="notifications"></div><div id="wrapper">%s<h1>%s</h1>%s%s</div><div id="footer">Stopka</div>%s%s%s</body></html>') % (
+        path, kind, classes, PS_BUS, links, MOBILE_MENU, EVIL.get(path.strip('/').split('/')[-1].replace('.html', ''), ''), path, extra, cards, add, REPORT, CLASSIC_MENU_JS)
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -112,6 +151,14 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get('Content-Length') or 0))
+        if self.path.startswith('/__collect'):
+            try:
+                COLLECT.append(json.loads(raw.decode()))
+            except ValueError:
+                COLLECT.append({'bad': raw.decode(errors='replace')})
+            self.send_response(204)
+            self.end_headers()
+            return
         boundary = self.headers.get('Content-Type', '').split('boundary=')[-1].encode()
         fields = {}
         for chunk in raw.split(b'--' + boundary):
@@ -128,6 +175,9 @@ class H(http.server.BaseHTTPRequestHandler):
             ans = {'lookups': 73, 'off': {'queries': 73, 'ms': 21}, 'on': {'queries': 1, 'ms': 0.4}}
         elif step == 'save':
             run = json.loads(fields['results'])
+            if fields.get('replace') and SAVED:
+                SAVED.pop()
+                run['replaced'] = True
             SAVED.append(run)
             ans = {'run': run, 'history': SAVED}
         else:
@@ -146,8 +196,24 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(json.dumps(STATE), 'application/json')
         if p == '/__saved':
             return self.send(json.dumps(SAVED), 'application/json')
-        if p in ('/admin', '/admin-go'):
+        if p == '/__collected':
+            out = json.dumps(COLLECT)
+            if 'clear=1' in u.query:
+                del COLLECT[:]
+            return self.send(out, 'application/json')
+        if p == '/bh-admin':
+            return self.send(open(os.environ['BH_ADMIN'], encoding='utf-8').read(), 'text/html; charset=utf-8')
+        if p == '/__bh':
+            q = dict(urllib.parse.parse_qsl(u.query))
+            BHQ.append(q)
+            data = json.load(open(os.environ['BH_REPORT'], encoding='utf-8'))
+            return self.send(json.dumps(data['session'] if q.get('op') == 'session' else data['report']), 'application/json')
+        if p == '/__bhq':
+            return self.send(json.dumps(BHQ), 'application/json')
+        if p in ('/admin', '/admin-go', '/admin-auto'):
             html = open(ADMIN, encoding='utf-8').read()
+            if p == '/admin-auto':
+                html = html.replace('data-spc-auto="0"', 'data-spc-auto="1"')
             if p == '/admin-go':
                 html = html.replace('</body>', '<script>setTimeout(function(){document.querySelector("[data-spc-start]").click()},800)</script></body>')
             return self.send(html, 'text/html; charset=utf-8')
@@ -163,10 +229,10 @@ class H(http.server.BaseHTTPRequestHandler):
             kind = 'start' if 'spc_start' in q else 'nav' if 'spc_nav' in q else 'other'
             c = self.cookie()
             # an ordinary visitor (no audit cookie) gets every part, as on the real shop
-            mode = 'all' if PAGECACHE or c is None else c
+            mode = 'all' if PAGECACHE else ('visitor' if c is None else c)
             LOG.append('%s %s cookie=%s purpose=%s' % (kind, p, c, self.headers.get('Sec-Purpose') or ''))
             time.sleep(DELAY)
-            return self.send(page(p, mode), 'text/html; charset=utf-8')
+            return self.send(page(p, mode, u.query), 'text/html; charset=utf-8')
         self.send_response(404)
         self.send_header('Content-Length', '0')
         self.end_headers()

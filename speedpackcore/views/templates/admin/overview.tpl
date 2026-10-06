@@ -38,6 +38,7 @@
             {elseif $card.id == 'instantnav'}<svg viewBox="0 0 24 24"><path d="M13.5 2L6 13h5l-1.5 9L18 10h-5z"/></svg>
             {elseif $card.id == 'instantcart'}<svg viewBox="0 0 24 24"><path d="M2 4h3l2.5 11h11l2-8H6.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/></svg>
             {elseif $card.id == 'cartspeed'}<svg viewBox="0 0 24 24"><path d="M3.5 17a8.5 8.5 0 1 1 17 0"/><path d="M12 17l4.5-6"/></svg>
+            {elseif $card.id == 'behaviour'}<svg viewBox="0 0 24 24"><circle cx="5" cy="18" r="2"/><circle cx="12" cy="7" r="2"/><circle cx="19" cy="14" r="2"/><path d="M6.2 16.3l4.6-7.6M13.4 8.4l4.3 4.1"/></svg>
             {else}<svg viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"/></svg>{/if}
           </span>
           <span class="spc-pill spc-pill-{$card.level|escape:'html':'UTF-8'}">{$card.status|escape:'html':'UTF-8'}</span>

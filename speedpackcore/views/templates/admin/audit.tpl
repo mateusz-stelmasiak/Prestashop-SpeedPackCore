@@ -9,7 +9,8 @@
   data-spc-url="{$spc_audit.url|escape:'html':'UTF-8'}"
   data-spc-home="{$spc_audit.home|escape:'html':'UTF-8'}"
   data-spc-texts="{$spc_audit.texts|escape:'html':'UTF-8'}"
-  data-spc-history="{$spc_audit.history|escape:'html':'UTF-8'}">
+  data-spc-history="{$spc_audit.history|escape:'html':'UTF-8'}"
+  data-spc-auto="{if $spc_audit.auto}1{else}0{/if}">
   <h3><i class="icon-tachometer"></i> {l s='Speed audit' mod='speedpackcore'}</h3>
   <div class="spc-audit-head">
     <div class="spc-audit-intro">

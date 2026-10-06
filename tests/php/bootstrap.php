@@ -59,3 +59,16 @@ function spc_version()
 {
     return preg_match('/<version><!\[CDATA\[([^\]]+)\]\]>/', (string) file_get_contents(SPC_MODULE . '/config.xml'), $m) ? $m[1] : '?';
 }
+
+/** PrestaShop's Shop, as much as the module asks of it. */
+class SpcShopStub
+{
+    public $id = 1;
+    public $id_shop_group = 1;
+    public $theme_name = 'classic';
+
+    public function getBaseURL($ssl = true)
+    {
+        return 'https://shop.test/';
+    }
+}

@@ -40,6 +40,7 @@ fi
 export SPC_TMP="$WORK"
 
 # 3. PHP suites
+export SPC_BH_ADMIN_VARS="$WORK/bh-vars.json" SPC_BH_REPORT="$WORK/bh-report.json" SPC_BH_MESSAGES="$WORK/bh-messages.json"
 step "php: module (install, settings)" php php/unit.php
 step "php: AsyncCart" php php/asynccart.php
 if php -r 'exit(class_exists("Redis") ? 0 : 1);' && (exec 3<>/dev/tcp/127.0.0.1/"${REDIS_PORT:-6390}") 2>/dev/null; then
@@ -51,10 +52,13 @@ if serve "$AP" php -S "127.0.0.1:$AP" -t "$T/php" "$T/php/mock/audit-shop.php"; 
   step "php: speed audit (mock shop)" php php/audit.php "$AP"
 else fail=$((fail+1)); FAILED+=("audit mock shop"); fi
 
+DB=0
 if php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' && php -r 'try { new PDO(getenv("SPC_DB_DSN") ?: "mysql:host=localhost;dbname=spctest", getenv("SPC_DB_USER") ?: "lp", getenv("SPC_DB_PASS") ?: "lp"); } catch (Exception $e) { exit(1); }' 2>/dev/null; then
   WP=$(port)
   serve "$WP" php -S "127.0.0.1:$WP" "$T/php/mock/weight-shop.php" && step "php: health check (MariaDB)" php php/health.php "$WP"
-else skipped "php: health check (MariaDB)" "no database, see README"; fi
+  step "php: Behaviour (MariaDB)" php php/behaviour.php
+  DB=1
+else skipped "php: health check, Behaviour (MariaDB)" "no database, see README"; fi
 
 # 4. browser
 PW=${SPC_PLAYWRIGHT:-playwright}
@@ -62,7 +66,14 @@ if command -v node >/dev/null && node -e "require('$PW')" 2>/dev/null && [ -f "$
   php browser/render.php "$SPC_ADMIN_VARS" > "$WORK/admin.html"
   N=$(port); serve "$N" python3 browser/shop.py "$N" "$MOD" "$WORK/admin.html" && step "browser: audit, every configuration" node browser/audit.e2e.js "$N" normal
   C=$(port); serve "$C" python3 browser/shop.py "$C" "$MOD" "$WORK/admin.html" --pagecache && step "browser: audit behind a page cache" node browser/audit.e2e.js "$C" pagecache
+  A=$(port); serve "$A" python3 browser/shop.py "$A" "$MOD" "$WORK/admin.html" && step "browser: audit after install or update" node browser/audit.e2e.js "$A" auto
   S=$(port); serve "$S" python3 browser/shop.py "$S" "$MOD" "$WORK/admin.html" && step "browser: SmartPrefetch, InstantNav" node browser/shop.e2e.js "$S"
+  if [ -f "$SPC_BH_REPORT" ]; then
+    php browser/render-bh.php "$SPC_BH_ADMIN_VARS" > "$WORK/bh.html"
+    export BH_ADMIN="$WORK/bh.html" BH_REPORT="$SPC_BH_REPORT"
+  fi
+  B=$(port); serve "$B" python3 browser/shop.py "$B" "$MOD" "$WORK/admin.html" && step "browser: Behaviour (shop and tab)" node browser/behaviour.e2e.js "$B"
+  if [ $DB = 1 ] && [ -f "$SPC_BH_MESSAGES" ]; then step "php: Behaviour, browser messages stored" php php/behaviour-replay.php "$SPC_BH_MESSAGES"; fi
 else skipped "browser tests" "no node/playwright (set SPC_PLAYWRIGHT) or no audit vars"; fi
 
 echo; echo "$pass passed, $fail failed, $skip skipped"
