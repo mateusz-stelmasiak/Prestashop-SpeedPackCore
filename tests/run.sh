@@ -4,7 +4,9 @@
 #   tests/run.sh --strict   a skipped suite counts as a failure
 set -u
 cd "$(dirname "$0")"
-T=$(pwd); ROOT=${SPC_ROOT:-$(dirname "$T")}; MOD="$ROOT/speedpackcore"; export SPC_ROOT="$ROOT"
+T=$(pwd); ROOT=${SPC_ROOT:-$(dirname "$T")}
+[ -d "$ROOT/speedpackcore" ] || ROOT=$(dirname "$ROOT")   # tests kept one folder deeper (tools/...)
+MOD="$ROOT/speedpackcore"; export SPC_ROOT="$ROOT"
 STRICT=0; [ "${1:-}" = "--strict" ] && STRICT=1
 WORK=$(mktemp -d); PIDS=()
 cleanup() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$WORK"; }
