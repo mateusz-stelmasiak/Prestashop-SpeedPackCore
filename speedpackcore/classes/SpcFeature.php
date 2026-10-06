@@ -45,6 +45,16 @@ abstract class SpcFeature
     /** The part's settings page section. */
     abstract public function getContent();
 
+    /**
+     * The part on the overview: whether it is on, a short status and one fact worth knowing.
+     *
+     * @return array ['on' => bool, 'status' => string, 'fact' => string]
+     */
+    public function summary()
+    {
+        return ['on' => true, 'status' => '', 'fact' => ''];
+    }
+
     /** Front-office assets; a part that has none keeps this. */
     public function hookActionFrontControllerSetMedia()
     {

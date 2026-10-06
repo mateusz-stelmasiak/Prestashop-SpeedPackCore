@@ -1,0 +1,8 @@
+{
+    "name": "speedpackcore/tests",
+    "description": "Test dependencies of SpeedPack Core (not part of the module)",
+    "license": "MIT",
+    "require": {
+        "smarty/smarty": "^4.3"
+    }
+}

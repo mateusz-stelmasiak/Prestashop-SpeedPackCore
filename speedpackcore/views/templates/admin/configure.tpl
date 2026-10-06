@@ -1,5 +1,7 @@
 {**
- * SpeedPack Core
+ * SpeedPack Core - the head of the settings page and its tabs. Every section that follows starts
+ * with a marker (pane.tpl); views/js/config.js shows one section at a time. Without JavaScript the
+ * page simply shows all of them.
  *
  * @author    Alhambra
  * @copyright 2026 Mateusz Stelmasiak (Alhambra)
@@ -8,8 +10,17 @@
 {if $spc.twice}
   <div class="alert alert-warning">{l s='These separate modules are still on: %s. SpeedPack Core already does their work, so uninstall them, or the same part runs twice.' sprintf=[$spc.twice] mod='speedpackcore'}</div>
 {/if}
-<div class="panel">
-  <h3><i class="icon-bolt"></i> SpeedPack Core {$spc.version|escape:'html':'UTF-8'}</h3>
-  <p>{l s='Five parts, each with its own settings below. Cache keeps database results in Redis, APCu or Memcached. SmartPrefetch fetches the page while the pointer moves, InstantNav swaps it in without a white flash, InstantCart makes adding, removing and changing quantities instant, and CartSpeed makes the cart page lighter.' mod='speedpackcore'}</p>
-  <p>{foreach from=$spc.sections item=section}<a class="btn btn-default" href="#spc-{$section.id|escape:'html':'UTF-8'}">{$section.title|escape:'html':'UTF-8'}</a> {/foreach}</p>
+<div class="spc-head" id="spc-head" data-spc-active="{$spc.active|escape:'html':'UTF-8'}">
+  <div class="spc-brand">
+    <svg class="spc-logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M18 4L8 18h7l-2 10 11-15h-7z"/></svg>
+    <div>
+      <h2>SpeedPack Core <small>{$spc.version|escape:'html':'UTF-8'}</small></h2>
+      <p>{l s='Speed-ups for the whole shop, each with its own switch and settings.' mod='speedpackcore'}</p>
+    </div>
+  </div>
+  <ul class="spc-tabs" role="tablist">
+    {foreach from=$spc.tabs item=tab}
+      <li><a href="#spc-{$tab.id|escape:'html':'UTF-8'}" role="tab" data-spc-tab="{$tab.id|escape:'html':'UTF-8'}">{$tab.title|escape:'html':'UTF-8'}</a></li>
+    {/foreach}
+  </ul>
 </div>

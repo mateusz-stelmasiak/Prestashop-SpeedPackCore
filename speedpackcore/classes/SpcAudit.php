@@ -25,6 +25,7 @@ if (!defined('_PS_VERSION_')) {
 class SpcAudit
 {
     public const COOKIE = 'spc_audit';
+    public const HEADER = 'X-SpeedPack-Audit';
     public const K_KEY = 'SPC_AUDIT_KEY';
     public const K_HISTORY = 'SPC_AUDIT_HISTORY';
     public const K_DONE = 'SPC_AUDIT_DONE';
@@ -34,6 +35,9 @@ class SpcAudit
 
     /** Every part the audit can switch off. */
     public const PARTS = ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed'];
+
+    /** @var bool whether apply() has run for this request */
+    protected static $applied = false;
 
     /** @var array|false|null parts allowed for this request; null when it is not an audit request */
     protected static $parts = false;
@@ -86,6 +90,49 @@ class SpcAudit
         self::$parts = $list === '' ? [] : array_values(array_intersect(explode(',', $list), self::PARTS));
 
         return self::$parts;
+    }
+
+    /** How the shop names a configuration in its answer: "none", or the parts that ran. */
+    public static function label(array $parts)
+    {
+        $parts = array_values(array_intersect(self::PARTS, $parts));
+
+        return $parts ? implode(',', $parts) : 'none';
+    }
+
+    /**
+     * At the very start of a shop request (actionDispatcherBefore): when the request carries a valid
+     * audit cookie, give it the configuration it asks for, and say so in a response header.
+     *
+     * - Without "cache", PrestaShop's database layer stops using the data cache for the request,
+     *   whatever the cache is (Redis, APCu, Memcached): Db::disableCache().
+     * - The header names the configuration that really ran. The audit checks it on every answer:
+     *   a page cache in front of the shop (a module, LiteSpeed, a CDN) answers without running
+     *   PrestaShop, so its answers carry no header – and are not counted as a measurement.
+     * - The answer must not be stored by any cache on the way.
+     *
+     * @return string[]|null the parts that run, or null for an ordinary visitor
+     */
+    public static function apply()
+    {
+        if (self::$applied) {
+            return self::parts();
+        }
+        self::$applied = true;
+        $parts = self::parts();
+        if ($parts === null) {
+            return null;
+        }
+        if (!in_array('cache', $parts, true)) {
+            Db::getInstance()->disableCache();
+            Db::getInstance(false)->disableCache();
+        }
+        if (!headers_sent()) {
+            header(self::HEADER . ': ' . self::label($parts));
+            header('Cache-Control: no-store, private');
+        }
+
+        return $parts;
     }
 
     /** Whether the audit has switched this part off for the current request. */
@@ -192,22 +239,37 @@ class SpcAudit
      */
     public static function page($url, array $tokens)
     {
-        $first = self::request($url, $tokens['all']);
+        $want = ['off' => self::label([]), 'on' => self::label(self::PARTS)];
+        // a first request warms PHP, the database and the data cache for both sides
+        $first = self::request(self::bust($url), $tokens['all']);
         if (!$first['ok']) {
             return ['error' => $first['error']];
         }
         $times = ['off' => [], 'on' => []];
-        for ($i = 0; $i < 2; ++$i) {
-            foreach (['off', 'on'] as $side) {
-                $r = self::request($url, $tokens[$side === 'off' ? 'off' : 'all']);
+        for ($i = 0; $i < 3; ++$i) {
+            // alternating, and the order turns each round, so a busy moment lands on both sides
+            foreach ($i % 2 ? ['on', 'off'] : ['off', 'on'] as $side) {
+                $r = self::request(self::bust($url), $tokens[$side === 'off' ? 'off' : 'all']);
                 if (!$r['ok']) {
                     return ['error' => $r['error']];
+                }
+                if ($r['audit'] !== $want[$side]) {
+                    return ['error' => 'page_cache', 'code' => 'page_cache'];
                 }
                 $times[$side][] = $r['ttfb'];
             }
         }
 
-        return ['off' => self::median($times['off']), 'on' => self::median($times['on'])];
+        return ['off' => self::median($times['off']), 'on' => self::median($times['on']), 'verified' => true];
+    }
+
+    /**
+     * The address with a query no cache has seen, so a page cache in front of the shop (keyed on
+     * the full address) has to pass the request on to PrestaShop.
+     */
+    public static function bust($url)
+    {
+        return $url . (strpos($url, '?') === false ? '?' : '&') . 'spc_t=' . bin2hex(random_bytes(6));
     }
 
     /**
@@ -309,6 +371,7 @@ class SpcAudit
             $cookies[] = $name . '=' . $value;
         }
         $headers = [];
+        $audit = null;
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -316,11 +379,14 @@ class SpcAudit
             CURLOPT_TIMEOUT => self::TIMEOUT,
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_ENCODING => '',
-            CURLOPT_USERAGENT => 'SpeedPackCore/1.2 (+speed audit)',
+            CURLOPT_USERAGENT => 'SpeedPackCore/1.4 (+speed audit)',
             CURLOPT_HTTPHEADER => ['Accept: text/html,application/json;q=0.9', 'Cookie: ' . implode('; ', $cookies)],
-            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers) {
+            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers, &$audit) {
                 if (stripos($line, 'Set-Cookie:') === 0 && preg_match('/^Set-Cookie:\s*([^=;\s]+)=([^;]*)/i', $line, $m)) {
                     $headers[$m[1]] = $m[2];
+                }
+                if (stripos($line, self::HEADER . ':') === 0) {
+                    $audit = trim(substr($line, strlen(self::HEADER) + 1));
                 }
 
                 return strlen($line);
@@ -343,7 +409,7 @@ class SpcAudit
             return ['ok' => false, 'error' => $body === false ? $error : 'HTTP ' . $code];
         }
 
-        return ['ok' => true, 'ttfb' => round($ttfb), 'total' => round($total), 'body' => (string) $body];
+        return ['ok' => true, 'ttfb' => round($ttfb), 'total' => round($total), 'body' => (string) $body, 'audit' => $audit];
     }
 
     protected static function median(array $values)

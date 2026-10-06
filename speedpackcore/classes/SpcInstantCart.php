@@ -81,6 +81,14 @@ class SpcInstantCart extends SpcFeature
         return true;
     }
 
+    public function summary()
+    {
+        $on = self::on(self::K_ENABLED);
+
+        return ['on' => $on, 'status' => $on ? $this->l('On') : $this->l('Off'),
+            'fact' => self::on(self::K_QTY) ? $this->l('Add, remove and change quantities without waiting.') : $this->l('Add and remove without waiting.')];
+    }
+
     public function hookActionFrontControllerSetMedia()
     {
         $controller = $this->context->controller;

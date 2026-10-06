@@ -59,7 +59,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.3.0';
+        $this->version = '1.4.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -129,7 +129,8 @@ class SpeedPackCore extends Module
 
     public function registerHooks()
     {
-        return $this->registerHook('actionFrontControllerSetMedia')
+        return $this->registerHook('actionDispatcherBefore')
+            && $this->registerHook('actionFrontControllerSetMedia')
             && $this->registerHook('displayHeader')
             && $this->registerHook('displayProductListReviews');
     }
@@ -141,8 +142,21 @@ class SpeedPackCore extends Module
     /* A request from the speed audit may ask for some parts to stay out (SpcAudit::off); for
      * every other visitor SpcAudit::off() is false and each part runs as set up. */
 
+    /** First thing on a shop request: the configuration an audit request asks for (SpcAudit::apply). */
+    public function hookActionDispatcherBefore($params)
+    {
+        // the back office is never measured, even from a browser that carries the audit cookie
+        if (isset($params['controller_type']) && (int) $params['controller_type'] === Dispatcher::FC_ADMIN) {
+            return;
+        }
+        SpcAudit::apply();
+    }
+
     public function hookActionFrontControllerSetMedia($params)
     {
+        // a second chance for a shop upgraded without visiting the settings page (the dispatcher
+        // hook not registered yet): still before the page's content is built
+        SpcAudit::apply();
         foreach ($this->parts() as $id => $part) {
             if (!SpcAudit::off($id)) {
                 $part->hookActionFrontControllerSetMedia();
@@ -180,7 +194,7 @@ class SpeedPackCore extends Module
             $this->ajaxAudit((string) Tools::getValue('step'));
         }
         $out = '';
-        foreach (['actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews'] as $hook) {
+        foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews'] as $hook) {
             if (!$this->isRegisteredInHook($hook)) {
                 $this->registerHook($hook);
             }
@@ -190,29 +204,148 @@ class SpeedPackCore extends Module
             $out .= $this->displayConfirmation($this->l('Settings updated.'));
         }
 
+        if (Tools::isSubmit('submitSpcToggle')) {
+            $out .= $this->toggle((string) Tools::getValue('spc_part'));
+        }
+
         $twice = [];
         foreach (self::REPLACES as $old) {
             if (Module::isInstalled($old) && Module::isEnabled($old)) {
                 $twice[] = $old;
             }
         }
-        $sections = [];
-        $body = '';
+
+        // every section of the page, in tab order; each starts with a marker (pane.tpl) that
+        // views/js/config.js turns into a tab
+        $panes = ['audit' => $this->renderAudit()];
         foreach ($this->parts() as $id => $part) {
-            $sections[] = ['id' => $id, 'title' => $part->displayName];
-            $body .= $part->getContent();
+            $panes[$id] = $part->getContent();
         }
-        $sections[] = ['id' => 'cartspeed', 'title' => 'CartSpeed'];
-        $body .= $this->cartSpeedForm();
-        $sections[] = ['id' => 'diagnostics', 'title' => $this->diagnostics->displayName];
-        $body .= $this->diagnostics->getContent();
+        $panes['cartspeed'] = $this->cartSpeedForm();
+        $panes['diagnostics'] = $this->diagnostics->getContent();
+
+        $tabs = [['id' => 'overview', 'title' => $this->l('Overview')], ['id' => 'audit', 'title' => $this->l('Speed audit')]];
+        foreach ($this->parts() as $id => $part) {
+            $tabs[] = ['id' => $id, 'title' => $part->displayName];
+        }
+        $tabs[] = ['id' => 'cartspeed', 'title' => 'CartSpeed'];
+        $tabs[] = ['id' => 'diagnostics', 'title' => $this->diagnostics->displayName];
+
         $this->context->smarty->assign(['spc' => [
             'version' => $this->version,
             'twice' => implode(', ', $twice),
-            'sections' => $sections,
+            'tabs' => $tabs,
+            'active' => $this->activeTab(),
         ]]);
+        $html = $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $this->pane('overview') . $this->renderOverview();
+        foreach ($panes as $id => $content) {
+            $html .= $this->pane($id) . $content;
+        }
 
-        return $out . $this->display(__FILE__, 'views/templates/admin/configure.tpl') . $this->renderAudit() . $body;
+        return $html . $this->pane('');
+    }
+
+    /** The marker that starts a tab's section ('' ends the last one). */
+    private function pane($id)
+    {
+        $this->context->smarty->assign('spc_pane', $id);
+
+        return $this->display(__FILE__, 'views/templates/admin/pane.tpl');
+    }
+
+    /** The tab to open: the one whose form was just sent, else the overview (or the address). */
+    private function activeTab()
+    {
+        $forms = [
+            'cache' => ['submitSpcCache', 'submitSpcBuiltin', 'submitSpcFlush', 'submitSpcOpcache'],
+            'smartprefetch' => ['submitsmartprefetch'],
+            'instantnav' => ['submitinstantnav'],
+            'instantcart' => ['submitInstantCart'],
+            'cartspeed' => ['submitSpcCartSpeed'],
+            'diagnostics' => ['submitSpcMultiFront'],
+        ];
+        foreach ($forms as $tab => $submits) {
+            foreach ($submits as $submit) {
+                if (Tools::isSubmit($submit)) {
+                    return $tab;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /** The one-click switches of the overview. */
+    private function toggle($part)
+    {
+        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED];
+        if (!isset($keys[$part])) {
+            return '';
+        }
+        $now = $this->summaries()[$part]['on'];
+        Configuration::updateValue($keys[$part], $now ? 0 : 1);
+
+        return $this->displayConfirmation($now ? $this->l('Switched off.') : $this->l('Switched on.'));
+    }
+
+    /** @return array id => summary of every part */
+    private function summaries()
+    {
+        $out = [];
+        foreach ($this->parts() as $id => $part) {
+            $out[$id] = $part->summary();
+        }
+        $cs = (bool) Configuration::get(self::K_CARTSPEED);
+        $out['cartspeed'] = ['on' => $cs, 'status' => $cs ? $this->l('On') : $this->l('Off'), 'fact' => $this->l('Address lookups of the cart page asked once, not 73 times.')];
+        $out['diagnostics'] = $this->diagnostics->summary();
+
+        return $out;
+    }
+
+    private function renderOverview()
+    {
+        $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
+        $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
+        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName];
+        $what = [
+            'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
+            'smartprefetch' => $this->l('The next page before the click.'),
+            'instantnav' => $this->l('Menu clicks without a reload.'),
+            'instantcart' => $this->l('The cart without waiting.'),
+            'cartspeed' => $this->l('A lighter cart page.'),
+            'diagnostics' => $this->l('The PrestaShop tuning guide, checked on this server.'),
+        ];
+        $cards = [];
+        foreach ($this->summaries() as $id => $sum) {
+            $cards[] = $sum + [
+                'id' => $id,
+                'name' => $names[$id],
+                'what' => $what[$id],
+                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed'], true),
+                'level' => isset($sum['level']) ? $sum['level'] : ($sum['on'] ? 'ok' : 'off'),
+            ];
+        }
+        $history = SpcAudit::history();
+        $last = $history ? $history[count($history) - 1] : null;
+        $gain = function ($pair, $before, $after) {
+            if (!is_array($pair) || empty($pair[$after]) || empty($pair[$before]) || $pair[$before] <= $pair[$after]) {
+                return null;
+            }
+
+            return round($pair[$before] / $pair[$after], 1);
+        };
+        $this->context->smarty->assign('spc_overview', [
+            'cards' => $cards,
+            'url' => AdminController::$currentIndex . '&configure=' . $this->name . '&token=' . Tools::getAdminTokenLite('AdminModules'),
+            'audit' => $last ? [
+                'at' => $last['at'],
+                'clicks' => $gain(isset($last['nav']) ? $last['nav'] : null, 'off', 'all'),
+                'pages' => $gain(isset($last['pages']) ? $last['pages'] : null, 'off', 'on'),
+                'cart' => $gain(isset($last['cart']) ? $last['cart'] : null, 'core', 'lean'),
+            ] : null,
+        ]);
+
+        return $this->display(__FILE__, 'views/templates/admin/overview.tpl');
     }
 
     /* ------------------------------------------------------------------ *
@@ -283,7 +416,8 @@ class SpeedPackCore extends Module
             'same' => $this->l('About the same'),
             'failed' => $this->l('Could not measure: %s'),
             'noCache' => $this->l('No data cache is chosen yet: pick Redis, APCu or Memcached in the Cache section.'),
-            'noBypass' => $this->l('Only Redis can be switched off for the audit alone, so with this cache both sides are measured with it on.'),
+            'pageCache' => $this->l('A page cache in front of the shop (a cache module, LiteSpeed, a CDN) answered instead of PrestaShop, so those pages could not be measured with and without SpeedPack. Let requests with the spc_audit cookie through it, or switch it off for the audit.'),
+            'navCached' => $this->l('The shop window got the same page whatever the audit asked for – a page cache in front of the shop answered. The clicks were not counted. Let requests with the spc_audit cookie through it, or switch it off for the audit.'),
             'clickWithout' => $this->l('No speed-ups'),
             'clickSp' => $this->l('SmartPrefetch'),
             'clickNav' => $this->l('InstantNav'),

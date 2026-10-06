@@ -164,6 +164,13 @@ class SpcInstantNav extends SpcFeature
      *  Front office
      * ------------------------------------------------------------------ */
 
+    public function summary()
+    {
+        $on = (bool) $this->conf(self::K_ENABLED);
+
+        return ['on' => $on, 'status' => $on ? $this->l('On') : $this->l('Off'), 'fact' => $this->l('Menu clicks swap the content: no reload, no white flash.')];
+    }
+
     public function hookActionFrontControllerSetMedia()
     {
         if (!$this->conf(self::K_ENABLED)) {

@@ -185,6 +185,14 @@ class SpcSmartPrefetch extends SpcFeature
         );
     }
 
+    public function summary()
+    {
+        $on = (bool) $this->conf(self::K_ENABLED);
+
+        return ['on' => $on, 'status' => $on ? $this->l('On') : $this->l('Off'),
+            'fact' => $this->conf(self::K_PRERENDER) ? $this->l('Fetches the page on hover; after 250 ms Chrome builds it whole.') : $this->l('Fetches the page on hover.')];
+    }
+
     /**
      * Second route to the same registration. Themes and PrestaShop builds
      * differ in which of these fires, and registering the script twice under

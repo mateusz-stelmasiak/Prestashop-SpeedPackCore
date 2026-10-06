@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.3.0.zip"><img alt="Download 1.3.0" src="https://img.shields.io/badge/download-speedpackcore--1.3.0.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.4.0.zip"><img alt="Download 1.4.0" src="https://img.shields.io/badge/download-speedpackcore--1.4.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.3.0" src="https://img.shields.io/badge/version-1.3.0-17201e">
+  <img alt="Version 1.4.0" src="https://img.shields.io/badge/version-1.4.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -45,7 +45,7 @@
 
 ## Features
 
-### Speed audit · *new in 1.2*
+### Speed audit · *verified configurations in 1.4*
 
 <img src="media/speed-audit.png" alt="The speed audit: each part measured without SpeedPack and with it" width="100%">
 
@@ -58,6 +58,9 @@
 - **CartSpeed:** database queries for the address lookups of a cart page
 - Animated results with before/after bars, and a chart of earlier audits to see the effect of later changes
 - Customers are not affected: "without" is a signed cookie, valid 15 minutes, that only the audit's own requests carry
+- **Every number is checked against the configuration it claims.** The shop answers each audit request with an `X-SpeedPack-Audit` header naming the parts it actually ran with, and the shop window checks which scripts actually loaded. The data cache is switched off for "without" whatever the backend (Redis, APCu, Memcached or PrestaShop's own), at the start of the request, before anything is read
+- **A clean start for every click:** between clicks the audit clears the shop window's service worker, Cache Storage and session storage, adds a fresh query string to every address, and rotates the order of the configurations each round after an uncounted warm-up round, so no configuration profits from what another one left behind
+- **Page caches are detected.** If a cache module, LiteSpeed or a CDN answers in front of PrestaShop, both sides would get the same stored page; the audit notices and says so instead of showing a meaningless result
 
 ### Cache – database results from memory · *new in 1.1*
 
@@ -196,10 +199,10 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.3.0.zip](dist/speedpackcore-1.3.0.zip)**.
+1. Download **[speedpackcore-1.4.0.zip](dist/speedpackcore-1.4.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
-4. Click **Configure**: each part has a status panel, its settings and its switch. To use Redis, enter its host and password under **Cache** and press **Save and test**.
+4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
 5. Press **Measure my shop** at the top of the settings page: the speed audit shows what each part does for your shop in about a minute (allow the pop-up window it opens).
 6. Open your shop and check: hover a menu link and click it (no white flash), add a product from a category page (the count goes up at once), change a quantity in the cart.
 
@@ -214,7 +217,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 | | |
 |---|---|
 | **Compatibility** | PrestaShop 1.7.6.0 to 9.x, PHP 7.1 or newer, multistore |
-| **Hooks** | `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews` |
+| **Hooks** | `actionDispatcherBefore` (only acts on the speed audit's own requests), `actionFrontControllerSetMedia`, `displayHeader`, `displayProductListReviews` |
 | **Overrides** | `Address::addressExists()`, installed and removed with the module. With Redis on, the module also writes `override/classes/cache/CacheRedis.php` |
 | **Files it changes** | With a data cache on, `app/config/parameters.php` (cache entries only; the original is kept as `parameters.php.speedpackcore.bak`) |
 | **Front controllers** | `add`, `remove`, `qty` (InstantCart endpoints) |
@@ -224,7 +227,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Source
 
-SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`asynccart/`](asynccart/); installable zips are in [`dist/`](dist/). See the [changelog](CHANGELOG.md).
+SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`asynccart/`](asynccart/); installable zips are in [`dist/`](dist/). See the [changelog](CHANGELOG.md). The tests are in [`tests/`](tests/): `tests/run.sh` runs them all (PHP suites against Redis, MariaDB and mock shops, and the speed audit and shop scripts in a real Chromium).
 
 ## Other languages
 
@@ -241,7 +244,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Audit de vitesse :** chaque partie mesurée avec et sans SpeedPack sur votre boutique, en une minute environ.
 - **Contrôle de santé :** le guide d'optimisation de PrestaShop vérifié sur votre serveur (PHP, base de données, réglages), les lignes à envoyer à l'hébergeur, le nettoyage de la base et le poids de chaque module.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.3.0.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.4.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -257,7 +260,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Audyt szybkości:** każda część zmierzona ze SpeedPack i bez niego w Twoim sklepie, w około minutę.
 - **Kontrola:** poradnik optymalizacji PrestaShop sprawdzony na Twoim serwerze (PHP, baza danych, ustawienia), gotowe linie dla hostingu, porządki w bazie i waga każdego modułu.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.3.0.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.4.0.zip`, potem Konfiguruj.
 </details>
 
 ---

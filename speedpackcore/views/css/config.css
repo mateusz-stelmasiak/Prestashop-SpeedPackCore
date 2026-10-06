@@ -1,0 +1,55 @@
+/**
+ * SpeedPack Core - the settings page: head, tabs and overview.
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-head { margin: 0 0 18px; padding: 18px 20px 0; border: 1px solid #dbe6e9; border-radius: 6px; background: #fff; }
+.spc-brand { display: flex; gap: 14px; align-items: center; }
+.spc-logo { width: 44px; height: 44px; flex: none; }
+.spc-logo rect { fill: #1d2a5b; }
+.spc-logo path { fill: #7fd3e6; }
+.spc-brand h2 { margin: 0; font-size: 20px; font-weight: 600; color: #1d2a5b; }
+.spc-brand h2 small { margin-left: 6px; font-size: 12px; color: #8a99a6; }
+.spc-brand p { margin: 2px 0 0; color: #6c868e; }
+.spc-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 16px -20px 0; padding: 0 14px; list-style: none; border-top: 1px solid #eef2f4; }
+.spc-tabs a { display: block; padding: 11px 12px 9px; border-bottom: 3px solid transparent; color: #4d5f68; font-weight: 600; text-decoration: none; }
+.spc-tabs a:hover { color: #1d2a5b; text-decoration: none; }
+.spc-tabs .is-active a { border-bottom-color: #25b9d7; color: #1d2a5b; }
+.spc-pane[hidden] { display: none; }
+
+.spc-result { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 18px; padding: 18px 20px;
+  border-radius: 6px; background: linear-gradient(120deg, #1d2a5b, #27478a); color: #fff; }
+.spc-result .btn-default { border-color: rgba(255, 255, 255, .5); background: transparent; color: #fff; }
+.spc-result-first { background: linear-gradient(120deg, #25b9d7, #1d8fb0); }
+.spc-result-first p { margin: 4px 0 0; font-size: 14px; }
+.spc-result-first .btn-primary { background: #fff; border-color: #fff; color: #1d6f8a; font-weight: 700; }
+.spc-kicker { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+.spc-figures { display: flex; flex-wrap: wrap; gap: 28px; margin-top: 6px; }
+.spc-figures b { display: block; font-size: 28px; line-height: 1.1; }
+.spc-figures span { font-size: 12px; opacity: .85; }
+
+.spc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.spc-card { display: flex; flex-direction: column; padding: 16px; border: 1px solid #dbe6e9; border-radius: 6px; background: #fff; }
+.spc-card-top { display: flex; justify-content: space-between; align-items: center; }
+.spc-card-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #eef7fa; color: #1d6f8a; }
+.spc-card-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.spc-card-off .spc-card-icon { background: #f2f4f5; color: #9aa7ad; }
+.spc-card h4 { margin: 12px 0 2px; font-size: 15px; font-weight: 600; color: #1d2a5b; }
+.spc-card-what { margin: 0; color: #6c868e; }
+.spc-card-fact { flex: 1; margin: 10px 0 12px; font-size: 13px; color: #363a41; }
+.spc-card-actions { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #eef2f4; }
+.spc-card-actions a { font-weight: 600; }
+.spc-card-actions form { margin: 0; }
+.spc-pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.spc-pill-ok { background: #e3f4ea; color: #1f7a48; }
+.spc-pill-off { background: #f2f4f5; color: #6c868e; }
+.spc-pill-warning { background: #fff3d6; color: #8a5a00; }
+.spc-pill-problem { background: #fbe9e7; color: #a5301f; }
+.spc-switch { position: relative; width: 40px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #c7d2d6; cursor: pointer; transition: background .2s; }
+.spc-switch span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: transform .2s; }
+.spc-switch.is-on { background: #2e8b57; }
+.spc-switch.is-on span { transform: translateX(18px); }
+.spc-switch:focus-visible { outline: 2px solid #1d2a5b; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .spc-switch, .spc-switch span { transition: none; } }

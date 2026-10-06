@@ -8,10 +8,14 @@
 /**
  * The speed audit on the settings page, in about two minutes:
  *
- *   1. the click test, in a shop window opened from here: three menu clicks after a 0.3 s hover,
- *      with no speed-ups, with SmartPrefetch, with InstantNav and with everything, timed from the
- *      click to the first paint of the new page (or to the swap, for InstantNav);
- *   2. five pages answered by the server without the data cache and with it;
+ *   1. the click test, in a shop window opened from here: menu clicks after a 0.3 s hover with no
+ *      speed-ups, with SmartPrefetch, with InstantNav and with everything, timed from the click to
+ *      the first paint of the new page (or to the swap, for InstantNav). A warm-up round first,
+ *      then three rounds that take the modes in turn; the shop window is emptied between clicks
+ *      and every page is checked to be the configuration it should be (see clickTest);
+ *   2. five pages answered by the server without the data cache and with it – every answer must
+ *      carry the shop's X-SpeedPack-Audit header naming that configuration, or it came from a
+ *      page cache and is not counted;
  *   3. adding to the cart through PrestaShop's cart page and through the lean endpoint;
  *   4. the address lookups of a cart page, counted with CartSpeed off and on.
  *
@@ -191,7 +195,6 @@
         gain('cache', run.pages.off, run.pages.on);
         state('cache', 'done');
         if (plan && !enabled.cache) note('cache', t.noCache);
-        else if ((plan ? plan.cache : run.cache) && (plan ? plan.cache : run.cache) !== 'redis') note('cache', t.noBypass);
       }
       var nav = run.nav || {};
       ['smartprefetch', 'instantnav'].forEach(function (part) {
@@ -275,13 +278,24 @@
      *  The click test, in a window of the shop
      * ---------------------------------------------------------------- */
 
+    /**
+     * The click test. To compare configurations and not the state the browser is in:
+     *  - a first round of clicks is not counted: it fills the browser cache with the shop's CSS,
+     *    scripts and pictures, so no mode pays for them;
+     *  - the counted rounds take every mode in turn, in a different order each round;
+     *  - after every click the service worker, Cache Storage and session storage of the shop
+     *    window are emptied, so nothing one mode prefetched answers for the next;
+     *  - every start page is checked: SmartPrefetch's and InstantNav's settings must be on the
+     *    page exactly when the mode asks for them. A page cache in front of the shop serves the
+     *    same page whatever the audit asks, and then the clicks are not counted at all.
+     */
     function clickTest(popup, plan, onClick) {
       var modes = [['off', 'nav_off']];
       if (plan.enabled.smartprefetch) modes.push(['smartprefetch', 'nav_smartprefetch']);
       if (plan.enabled.instantnav) modes.push(['instantnav', 'nav_instantnav']);
       if (modes.length > 1) modes.push(['all', 'all']);
-      var results = {};
-      var chain = Promise.resolve();
+      var times = {}, applied = {}, failures = 0, chain = Promise.resolve();
+      modes.forEach(function (m) { times[m[0]] = []; applied[m[0]] = true; });
 
       function setCookie(value, age) {
         document.cookie = plan.cookie + '=' + value + '; path=/; max-age=' + age + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
@@ -302,6 +316,35 @@
             setTimeout(poll, 50);
           })();
         });
+      }
+
+      /** Empty what a mode may have left in the shop window. */
+      function clean() {
+        var jobs = [];
+        try { popup.sessionStorage.clear(); } catch (e) { /* not reachable */ }
+        try {
+          if (popup.navigator.serviceWorker && popup.navigator.serviceWorker.getRegistrations) {
+            jobs.push(popup.navigator.serviceWorker.getRegistrations().then(function (list) {
+              return Promise.all(list.map(function (reg) { return reg.unregister(); }));
+            }));
+          }
+        } catch (e) { /* no workers here */ }
+        try {
+          if (popup.caches && popup.caches.keys) {
+            jobs.push(popup.caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return popup.caches.delete(k); }));
+            }));
+          }
+        } catch (e) { /* no Cache Storage here */ }
+        return Promise.all(jobs).catch(function () { /* best effort */ });
+      }
+
+      /** Whether the page that loaded is the configuration the mode asked for. */
+      function verify(mode) {
+        var wantSp = mode === 'smartprefetch' || mode === 'all', wantNav = mode === 'instantnav' || mode === 'all';
+        var sp = false, nav = false;
+        try { sp = !!popup.smartPrefetchConfig; nav = !!popup.instantNavConfig; } catch (e) { return false; }
+        return sp === wantSp && nav === wantNav;
       }
 
       function links(d) {
@@ -353,44 +396,64 @@
         });
       }
 
-      function one(mode, k) {
+      function one(mode, pick) {
         var start = home + (home.indexOf('?') === -1 ? '?' : '&') + 'spc_start=' + Date.now();
         return load(start).then(function (d) {
           return wait(SETTLE).then(function () {
+            var ok = verify(mode);
             var list = links(d);
             if (!list.length) throw new Error(t.noLinks);
-            var a = list[k % list.length];
+            var a = list[pick % list.length];
             var u = new URL(a.href);
             // an address no earlier click used, so nothing cached from before can answer it
-            u.searchParams.set('spc_nav', mode + '-' + k + '-' + Date.now());
+            u.searchParams.set('spc_nav', mode + '-' + pick + '-' + Date.now());
             a.setAttribute('href', u.href);
             ['pointerover', 'mouseover', 'pointerenter', 'mouseenter', 'mousemove'].forEach(function (type) {
               a.dispatchEvent(new popup.MouseEvent(type, { bubbles: type.indexOf('enter') === -1, cancelable: true, view: popup }));
             });
-            return wait(HOVER).then(function () { return measure(d, a); });
+            return wait(HOVER).then(function () { return measure(d, a); }).then(function (ms) { return { ms: ms, applied: ok }; });
           });
         });
       }
 
-      modes.forEach(function (m) {
-        var times = [];
-        for (var k = 0; k < CLICKS; k++) {
-          (function (k) {
+      // round -1 warms up; rounds 0..CLICKS-1 count. Each round starts with a different mode.
+      chain = chain.then(function () { return clean(); });
+      for (var round = -1; round < CLICKS; round++) {
+        for (var i = 0; i < modes.length; i++) {
+          (function (m, round, pick) {
             chain = chain.then(function () {
-              if (k === 0) setCookie(plan.tokens[m[1]], plan.expires);
-              onClick(m[0], k);
-              return one(m[0], k).then(function (ms) { times.push(ms); });
+              setCookie(plan.tokens[m[1]], plan.expires);
+              onClick(m[0], round);
+              return one(m[0], pick).then(function (r) {
+                if (!r.applied) applied[m[0]] = false;
+                if (round >= 0) times[m[0]].push(r.ms);
+              }, function (e) {
+                if (e.message === t.noLinks || e.message === 'window closed') throw e;
+                failures++;
+              }).then(function () {
+                // what the page still writes right after it shows (InstantNav keeps the swapped
+                // page in session storage) is written before the window is emptied
+                return wait(SETTLE / 3);
+              }).then(clean);
             });
-          })(k);
+          })(modes[(i + round + 1) % modes.length], round, round + 1 + i);
         }
-        chain = chain.then(function () { results[m[0]] = median(times); });
-      });
+      }
 
-      return chain.then(function () { return results; }, function (e) { results.error = e.message; return results; })
-        .then(function (r) {
+      var results = {};
+      return chain.then(function () {
+        var notApplied = modes.filter(function (m) { return !applied[m[0]]; }).map(function (m) { return m[0]; });
+        if (notApplied.length) {
+          results.notApplied = notApplied;
+        } else {
+          modes.forEach(function (m) { results[m[0]] = median(times[m[0]]); });
+        }
+        if (failures) results.failures = failures;
+      }, function (e) { results.error = e.message; })
+        .then(function () {
           setCookie('', 0);
           try { popup.close(); } catch (e) { /* already closed */ }
-          return r;
+          return results;
         });
     }
 
@@ -440,7 +503,7 @@
         results.cache = plan.cache;
         var navModes = 1 + (plan.enabled.smartprefetch ? 1 : 0) + (plan.enabled.instantnav ? 1 : 0);
         if (navModes > 1) navModes++;
-        total = 1 + (popup ? navModes * CLICKS : 0) + plan.pages.length + 2 + 1;
+        total = 1 + (popup ? navModes * (CLICKS + 1) : 0) + plan.pages.length + 2 + 1;
         advance();
 
         // 1. clicks
@@ -455,17 +518,19 @@
           state('smartprefetch', null);
           state('instantnav', null);
           if (nav.error) { note('smartprefetch', fmt(t.failed, nav.error)); note('instantnav', fmt(t.failed, nav.error)); }
+          if (nav.notApplied) { note('smartprefetch', t.navCached); note('instantnav', t.navCached); }
           ['off', 'smartprefetch', 'instantnav', 'all'].forEach(function (m) { if (typeof nav[m] === 'number') results.nav[m] = nav[m]; });
           show({ nav: results.nav }, plan);
         });
       }).then(function () {
         // 2. pages, one at a time
         state('cache', 'running');
-        var off = [], on = [], chain = Promise.resolve();
+        var off = [], on = [], chain = Promise.resolve(), pageCache = false;
         plan.pages.forEach(function (page, i) {
           chain = chain.then(function () {
             advance(fmt(t.page, i + 1, plan.pages.length, page.name));
             return post('page', { i: i }).then(function (r) {
+              if (r.code === 'page_cache') { pageCache = true; return; }
               if (r.error) { note('cache', fmt(t.failed, r.error)); return; }
               off.push(r.off); on.push(r.on);
             });
@@ -474,6 +539,8 @@
         return chain.then(function () {
           var avg = function (l) { return l.length ? Math.round(l.reduce(function (s, v) { return s + v; }, 0) / l.length) : null; };
           if (off.length) { results.pages = { off: avg(off), on: avg(on) }; show({ pages: results.pages, cache: plan.cache }, plan); } else state('cache', null);
+          // a note after show(), which sets the card's own note
+          if (pageCache) note('cache', t.pageCache);
         });
       }).then(function () {
         // 3. the cart

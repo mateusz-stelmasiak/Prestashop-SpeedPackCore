@@ -43,6 +43,18 @@ class SpcDiagnostics extends SpcFeature
         exit;
     }
 
+    public function summary()
+    {
+        $health = new SpcHealth($this->module);
+        $t = SpcHealth::tally(array_merge($health->php(), $health->prestashop(), $health->database()));
+        $fact = $t[SpcHealth::BAD] || $t[SpcHealth::WARN]
+            ? sprintf($this->l('%1$d to fix, %2$d worth changing.'), $t[SpcHealth::BAD], $t[SpcHealth::WARN])
+            : $this->l('Every setting of the tuning guide is in order.');
+
+        return ['on' => true, 'status' => $t[SpcHealth::BAD] ? $this->l('Needs attention') : ($t[SpcHealth::WARN] ? $this->l('Could be better') : $this->l('Fine')),
+            'fact' => $fact, 'level' => $t[SpcHealth::BAD] ? 'problem' : ($t[SpcHealth::WARN] ? 'warning' : 'ok')];
+    }
+
     public function getContent()
     {
         $out = '';

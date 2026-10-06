@@ -1,5 +1,19 @@
 # Changelog
 
+## SpeedPack Core 1.4.0
+
+**The speed audit now really compares configurations:**
+- "Without SpeedPack" switches the data cache off for any backend (Redis, APCu, Memcached or PrestaShop's own), at the very start of the request (new `actionDispatcherBefore` hook), not only with Redis.
+- Every audit answer carries an `X-SpeedPack-Audit` header with the parts the shop actually ran; the server test checks it on every request and the click test checks which scripts loaded in the shop window. Nothing is counted for a configuration that was not applied.
+- Page caches in front of PrestaShop (cache modules, LiteSpeed, CDNs) are detected and reported instead of producing equal numbers on both sides; every audit address carries a fresh query string and audit answers are sent `no-store`.
+- The click test clears the shop window's service worker, Cache Storage and session storage before every click, starts with an uncounted warm-up round and rotates the order of the configurations each round.
+
+**A new settings page:** an Overview with every part's status, a one-click switch and the last audit's gains, and a tab for each part, the speed audit and the health check. The tab stays open after saving.
+
+**Tests:** `tests/run.sh` runs the module's test suite: install and settings, AsyncCart, the data cache against Redis, the speed audit against a mock shop, the health check against MariaDB, and the audit and shop scripts in Chromium.
+
+Polish translations for the new texts.
+
 ## SpeedPack Core 1.3.0
 
 **Health check**, a new section built from PrestaShop's optimization guide (Scale > Optimizations and Taking care of PrestaShop), read from the running shop:

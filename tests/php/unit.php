@@ -1,0 +1,64 @@
+<?php
+require __DIR__ . '/bootstrap.php';
+// A stand-in for the bits of PrestaShop the module touches, to run install, hooks and the settings page.
+define('_PS_VERSION_', '1.7.8.0'); define('_PS_MODULE_DIR_', SPC_ROOT . '/'); define('__PS_BASE_URI__', '/'); define('_DB_PREFIX_', 'ps_'); define('_COOKIE_KEY_', 'abc'); define('_PS_ROOT_DIR_', SPC_FAKEPS); define('_PS_OVERRIDE_DIR_', SPC_FAKEPS . '/override/');
+function pSQL($s){ return addslashes((string) $s); }
+class Configuration { static $v = []; static function get($k){ return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k,$x){ self::$v[$k]=$x; return true; }
+  static function updateGlobalValue($k,$x){ return self::updateValue($k,$x);} static function deleteByName($k){ unset(self::$v[$k]); return true; } static function isCatalogMode(){ return false; } }
+class Shop { static function isFeatureActive(){ return false; } }
+class Tools { static $post=[]; static function strtolower($s){return strtolower($s);} static function strlen($s){return strlen($s);} static function strpos($a,$b){return strpos($a,$b);} static function strrpos($a,$b){return strrpos($a,$b);} static function substr($a,$b,$c=null){return substr($a,$b,$c);}
+  static function isSubmit($k){ return isset(self::$post[$k]); } static function getValue($k,$d=false){ return isset(self::$post[$k]) ? self::$post[$k] : $d; } static function getToken($x){ return 'tok'; } static function getAdminTokenLite($x){ return 'adm'; } static function passwdGen($n=8){ return substr(str_repeat(md5(mt_rand()),4),0,$n); } static function clearSmartyCache(){} static function safeOutput($s){ return $s; } }
+class Link { function getModuleLink($m,$c,$p=[],$s=null){ return "https://shop.test/module/$m/$c"; } function getPageLink($p,$s=null,$l=null,$q=null){ return "https://shop.test/pl/$p"; } function getCMSLink($id,$a=null,$b=null,$c=null){ return "https://shop.test/pl/content/$id-about"; } }
+class Media { static $defs=[]; static function addJsDef($a){ self::$defs = array_merge(self::$defs,$a); } }
+class FrontCtl { public $php_self='category'; public $js=[]; function addJS($p){ $this->js['admin'][]=$p; } function addCSS($p){ $this->js["admincss"][]=$p; } function registerJavascript($id,$p,$o=[]){ $this->js[$id]=$p; } function registerStylesheet($id,$p,$o=[]){ $this->js['css:'.$id]=$p; } }
+class Smarty { public $vars=[]; function assign($a, $v = null){ $this->vars = array_merge($this->vars, is_array($a) ? $a : [$a => $v]); } }
+class Context { public $link, $controller, $language, $smarty; static $c; static function getContext(){ if(!self::$c){ self::$c=new Context; self::$c->link=new Link; self::$c->controller=new FrontCtl; self::$c->language=(object)['id'=>1]; self::$c->smarty=new Smarty; } return self::$c; } }
+class CMS { static function getCMSPages($l,$a=null,$b=true){ return [['id_cms'=>4]]; } }
+class Db { static function getInstance(){ return new Db; } function escape($s){ return addslashes((string) $s); } function executeS($q){ return []; } function getRow($q){ return false; } function getValue($q){ return false; } function execute($q){ return true; } }
+class HelperForm { public $module,$name_controller,$token,$currentIndex,$submit_action,$default_form_language,$fields_value=[],$title,$show_toolbar;
+  function generateForm($f){ $n=0; if(isset($f['form'])) $f=[$f]; foreach($f as $x) $n+=count($x['form']['input']); foreach($f as $x) foreach($x['form']['input'] as $i) if(!array_key_exists($i['name'],$this->fields_value)) throw new Exception('no value for '.$i['name']); $id = isset($f['form']['id_form']) ? $f['form']['id_form'] : (isset($f[0]['form']['id_form']) ? $f[0]['form']['id_form'] : 'none'); return "<form:{$this->submit_action}:$n:$id>"; } }
+class AdminController { static $currentIndex = 'index.php?controller=AdminModules'; }
+class Module { public $_errors=[]; public $name,$version,$author,$tab,$need_instance,$bootstrap,$displayName,$description,$confirmUninstall,$ps_versions_compliancy,$module_key; public static $hooks=[]; static $enabled=[];
+  protected $context; function __construct(){ $this->context = Context::getContext(); } function l($s,$spec=false){ return $s; } function install(){ return true; } function uninstall(){ return true; }
+  function registerHook($h){ self::$hooks[$h]=1; return true; } function isRegisteredInHook($h){ return isset(self::$hooks[$h]); } function displayConfirmation($s){ return "[ok:$s]"; } function displayError($s){ return "[err:$s]"; } function displayWarning($s){ return "[warn:$s]"; } function getPathUri(){ return '/modules/speedpackcore/'; }
+  function display($file,$tpl){ if(!is_file(dirname($file).'/'.$tpl)) throw new Exception("no template $tpl"); $v=$this->context->smarty->vars;
+    if($tpl==='views/templates/admin/configure.tpl'){ $o=$v['spc']['twice']?"[warn:{$v['spc']['twice']}]":''; foreach($v['spc']['tabs'] as $x) $o.="<nav:{$x['id']}>"; return $o . "<active:{$v['spc']['active']}>"; }
+    if($tpl==='views/templates/admin/pane.tpl') return "<pane:{$v['spc_pane']}>";
+    if($tpl==='views/templates/admin/overview.tpl') return '<overview ' . json_encode($v['spc_overview']['cards']) . '>';
+    if($tpl==='views/templates/hook/list-button.tpl') return '<ic-mini '.json_encode($v['spc_btn']).'>';
+    if($tpl==='views/templates/admin/cache-actions.tpl') return '<actions>';
+    return "<tpl:$tpl>"; }
+  static function isEnabled($m){ return !empty(self::$enabled[$m]); } static function isInstalled($m){ return !empty(self::$enabled[$m]); } }
+require SPC_MODULE . '/speedpackcore.php';
+$m = new SpeedPackCore();
+assert_ok($m->module_key === '3eb6b4d19aa0d3c653ffeb7d54022e6c', 'module key');
+assert_ok($m->install(), 'install');
+echo 'hooks: ', implode(',', array_keys(Module::$hooks)), "\n";
+echo 'config keys: ', count(Configuration::$v), ' ', implode(',', array_keys(Configuration::$v)), "\n";
+$m->hookActionFrontControllerSetMedia([]); $m->hookDisplayHeader([]);
+echo 'js defs: ', implode(',', array_keys(Media::$defs)), "\n";
+echo 'assets: ', json_encode(Context::getContext()->controller->js, JSON_UNESCAPED_SLASHES), "\n";
+echo 'sw url: ', Media::$defs['smartPrefetchConfig']['workerUrl'], ' | add url: ', Media::$defs['instantcart']['url'], ' | nav region: ', Media::$defs['instantNavConfig']['region'], "\n";
+$btn = $m->hookDisplayProductListReviews(['product' => ['id_product' => 5, 'name' => 'Kimchi', 'add_to_cart_url' => 'x']]);
+assert_ok(strpos($btn, 'ic-mini') !== false && strpos($btn, 'Add to cart') !== false && strpos($btn, '"id_product":5') !== false, 'list button via template');
+Module::$enabled = ['speedpackcore' => 1, 'instantnav' => 1];
+$page = $m->getContent(); echo 'settings page: ', $page, "\n"; assert_ok(strpos($page,'[warn:instantnav]')!==false && substr_count($page,'<nav:')===8 && substr_count($page,'<tpl:views/templates/admin/status.tpl>')===3, 'settings page: warning, 8 tabs, 3 status panels');
+preg_match_all('/<form:(\w+):(\d+):([\w-]+)>/', $page, $f); echo 'anchors: ', implode(' ', $f[3]), "\n"; assert_ok(count(array_intersect($f[3], ['spc-cache','spc-builtin','spc-smartprefetch','spc-instantnav','spc-instantcart','spc-cartspeed']))===6, 'each form carries its anchor'); echo 'forms: ', implode(' ', $f[1]), "\n";
+assert_ok(count(array_unique($f[1])) === 6, 'six distinct forms');
+preg_match_all('/<pane:(\w*)>/', $page, $pn);
+assert_ok(implode(',', $pn[1]) === 'overview,audit,cache,smartprefetch,instantnav,instantcart,cartspeed,diagnostics,', 'a pane marker before every section, in tab order, and one closing the last');
+preg_match('/<overview (.*?)>(?=<pane)/s', $page, $ov); $cards = json_decode($ov[1], true);
+assert_ok(array_column($cards, 'id') === ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'diagnostics'] && $cards[0]['on'] === false && $cards[1]['on'] === true && $cards[1]['switch'] && !$cards[0]['switch'], 'overview: a card per part, the cache off, SmartPrefetch on with a switch');
+assert_ok(strpos($page, '<active:>') !== false, 'no form sent: the page opens where the visitor left it');
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'smartprefetch']; $page = $m->getContent();
+assert_ok((int) Configuration::get('SPC_SP_ENABLED') === 0 && strpos($page, 'Switched off.') !== false, 'the overview switch turns SmartPrefetch off');
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'smartprefetch']; $m->getContent();
+assert_ok((int) Configuration::get('SPC_SP_ENABLED') === 1, 'and on again');
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'cache']; $before = Configuration::$v; $m->getContent();
+assert_ok(Configuration::$v === $before, 'no switch for parts that are not a simple on/off (the cache)');
+Tools::$post = ['submitinstantnav' => 1, 'SPC_NAV_ENABLED' => 1, 'SPC_NAV_LINKS' => 'a', 'SPC_NAV_REGION' => '#wrapper', 'SPC_NAV_HOVER' => 60, 'SPC_NAV_DELAY' => 140, 'SPC_NAV_TTL' => 30, 'SPC_NAV_TRANSITION' => 'slide', 'SPC_NAV_TRANSITION_MS' => 200];
+$page = $m->getContent(); assert_ok(strpos($page, '<active:instantnav>') !== false, 'after saving InstantNav, its tab opens'); assert_ok(Configuration::get('SPC_NAV_TTL') === 30 && Configuration::get('SPC_NAV_TRANSITION') === 'slide', 'nav save'); assert_ok(Configuration::get('SPC_SP_HOVER_DELAY') == 65, 'prefetch untouched by nav save');
+Tools::$post = ['submitSpcCartSpeed' => 1, 'SPC_CS_ENABLED' => 0]; $m->getContent(); assert_ok(Configuration::get('SPC_CS_ENABLED') === 0, 'cartspeed off');
+assert_ok($m->uninstall() && count(Configuration::$v) === 0, 'uninstall clears settings (' . implode(',', array_keys(Configuration::$v)) . ')');
+echo "ALL OK\n";
+function assert_ok($c, $what){ if(!$c){ echo "FAIL: $what\n"; exit(1);} echo "ok  $what\n"; }

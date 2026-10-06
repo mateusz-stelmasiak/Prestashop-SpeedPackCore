@@ -1,0 +1,37 @@
+# SpeedPack Core tests
+
+```sh
+cd tests && composer install   # Smarty, to render the module's own templates
+./run.sh                        # everything that can run here
+./run.sh --strict               # the same, but a skipped suite is a failure
+```
+
+`run.sh` lints every PHP and JavaScript file, starts the mock shops on free ports, runs the suites below and exits non-zero on any failure. The suites need no PrestaShop: they load the module's real classes and templates against small stand-ins for the PrestaShop classes they call.
+
+| Suite | What it checks | Needs |
+|---|---|---|
+| `php/unit.php` | Install and uninstall, hooks, the settings page: tabs, panes in order, the overview cards, one-click switches, the tab that stays open after saving | PHP |
+| `php/asynccart.php` | AsyncCart: install, script only on the cart page, standing aside when SpeedPack Core's InstantCart handles the cart, settings validation, the quantity endpoint (stock, minimum, fallbacks) and Undo | PHP |
+| `php/cache.php` | The data cache against a real Redis: settings, `parameters.php` written and restored, the override, hit rate | Redis, phpredis |
+| `php/audit.php` | The speed audit: the signed cookie, `SpcAudit::apply()` (data cache off, `X-SpeedPack-Audit` header), each server step against `php/mock/audit-shop.php`, the page-cache detection, saving and history | PHP, curl |
+| `php/health.php` | The health check against a real MariaDB: every check, every database-care cleanup (what goes and what stays), ANALYZE, module weight against `php/mock/weight-shop.php`, and the whole settings page rendered with Smarty | MariaDB / MySQL |
+| `browser/audit.e2e.js normal` | The audit's click test in Chromium: every configuration really applied, the shop window cleared before each click, warm-up and rotated rounds | Node, Playwright |
+| `browser/audit.e2e.js pagecache` | The same behind a page cache: nothing counted, the warning shown | Node, Playwright |
+| `browser/shop.e2e.js` | InstantNav refuses pages with active content and swaps clean ones; SmartPrefetch's prefetch and prerender rules, the cart left out | Node, Playwright |
+
+## Settings
+
+| Variable | Default | |
+|---|---|---|
+| `SPC_SMARTY` | `tests/vendor/autoload.php` | Smarty's autoloader, if installed elsewhere |
+| `SPC_ROOT` | the folder above `tests/` | The folder holding `speedpackcore/` and `asynccart/` |
+| `REDIS_PORT`, `REDIS_PASS` | `6390`, `s3cret` | A throw-away Redis for `cache.php` (it writes and may flush keys) |
+| `SPC_DB_DSN`, `SPC_DB_USER`, `SPC_DB_PASS` | `mysql:host=localhost;dbname=spctest`, `lp`, `lp` | An empty database for `health.php` (it creates `ps_` tables) |
+| `SPC_PLAYWRIGHT` | `playwright` | Where to `require()` Playwright from |
+
+A throw-away Redis and database:
+
+```sh
+redis-server --port 6390 --requirepass s3cret --daemonize yes
+mysql -e "CREATE DATABASE spctest; CREATE USER lp@localhost IDENTIFIED BY 'lp'; GRANT ALL ON spctest.* TO lp@localhost;"
+```

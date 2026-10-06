@@ -128,6 +128,22 @@ class SpcCache extends SpcFeature
         ];
     }
 
+    public function summary()
+    {
+        $backend = SpcCacheBackend::current();
+        if ($backend === SpcCacheBackend::OFF) {
+            return ['on' => false, 'status' => $this->l('Off'), 'fact' => $this->l('Every database result is read from the database again. Choose Redis, APCu or Memcached.')];
+        }
+        $fact = $this->l('Database results come from memory.');
+        $stats = SpcCacheBackend::stats($this->redisSettings());
+        $asked = $stats ? (int) $stats['hits'] + (int) $stats['misses'] : 0;
+        if ($asked > 0) {
+            $fact = sprintf($this->l('%s of reads answered from memory.'), round(100 * (int) $stats['hits'] / $asked) . '%');
+        }
+
+        return ['on' => true, 'status' => $this->backendName($backend), 'fact' => $fact];
+    }
+
     protected function backendName($backend)
     {
         $names = [

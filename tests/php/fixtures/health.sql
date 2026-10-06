@@ -1,0 +1,34 @@
+DROP TABLE IF EXISTS ps_log, ps_connections, ps_connections_page, ps_connections_source, ps_guest, ps_customer, ps_cart, ps_cart_product, ps_cart_cart_rule,
+  ps_customization, ps_customized_data, ps_specific_price, ps_orders, ps_mail, ps_configuration, ps_configuration_lang, ps_hook, ps_hook_module, ps_module, ps_module_shop,
+  ps_old_myisam, ps_category, ps_category_shop, ps_category_lang, ps_category_product, ps_product, ps_product_shop, ps_product_lang, ps_product_sale, ps_stock_available, ps_address;
+CREATE TABLE ps_log (id_log INT AUTO_INCREMENT PRIMARY KEY, message TEXT, date_add DATETIME);
+CREATE TABLE ps_connections (id_connections INT AUTO_INCREMENT PRIMARY KEY, id_guest INT, date_add DATETIME, KEY (date_add), KEY (id_guest));
+CREATE TABLE ps_connections_page (id_connections INT, id_page INT, time_start DATETIME, KEY (id_connections));
+CREATE TABLE ps_connections_source (id_connections_source INT AUTO_INCREMENT PRIMARY KEY, id_connections INT, date_add DATETIME, KEY (id_connections));
+CREATE TABLE ps_guest (id_guest INT AUTO_INCREMENT PRIMARY KEY, id_customer INT DEFAULT 0);
+CREATE TABLE ps_customer (id_customer INT PRIMARY KEY);
+CREATE TABLE ps_cart (id_cart INT AUTO_INCREMENT PRIMARY KEY, id_customer INT, id_guest INT, date_upd DATETIME, KEY (id_guest));
+CREATE TABLE ps_cart_product (id_cart INT, id_product INT);
+CREATE TABLE ps_cart_cart_rule (id_cart INT, id_cart_rule INT);
+CREATE TABLE ps_customization (id_customization INT AUTO_INCREMENT PRIMARY KEY, id_cart INT);
+CREATE TABLE ps_customized_data (id_customization INT, value TEXT);
+CREATE TABLE ps_specific_price (id_specific_price INT AUTO_INCREMENT PRIMARY KEY, id_cart INT);
+CREATE TABLE ps_orders (id_order INT AUTO_INCREMENT PRIMARY KEY, id_cart INT);
+CREATE TABLE ps_mail (id_mail INT AUTO_INCREMENT PRIMARY KEY, date_add DATETIME);
+CREATE TABLE ps_configuration (id_configuration INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(254), value TEXT);
+CREATE TABLE ps_configuration_lang (id_configuration INT, id_lang INT, value TEXT);
+CREATE TABLE ps_hook (id_hook INT PRIMARY KEY, name VARCHAR(64));
+CREATE TABLE ps_hook_module (id_module INT, id_shop INT, id_hook INT);
+CREATE TABLE ps_module (id_module INT PRIMARY KEY, name VARCHAR(64), active TINYINT);
+CREATE TABLE ps_module_shop (id_module INT, id_shop INT);
+CREATE TABLE ps_old_myisam (id INT) ENGINE=MyISAM;
+CREATE TABLE ps_category (id_category INT PRIMARY KEY, active TINYINT);
+CREATE TABLE ps_category_shop (id_category INT, id_shop INT);
+CREATE TABLE ps_category_lang (id_category INT, id_lang INT, id_shop INT, name VARCHAR(128));
+CREATE TABLE ps_category_product (id_category INT, id_product INT);
+CREATE TABLE ps_product (id_product INT PRIMARY KEY, customizable TINYINT, date_add DATETIME);
+CREATE TABLE ps_product_shop (id_product INT, id_shop INT, active TINYINT, visibility VARCHAR(16), available_for_order TINYINT, cache_default_attribute INT, out_of_stock INT);
+CREATE TABLE ps_product_lang (id_product INT, id_lang INT, id_shop INT, name VARCHAR(128));
+CREATE TABLE ps_product_sale (id_product INT, quantity INT);
+CREATE TABLE ps_stock_available (id_product INT, id_product_attribute INT, id_shop INT, quantity INT);
+CREATE TABLE ps_address (id_address INT PRIMARY KEY, deleted TINYINT);
