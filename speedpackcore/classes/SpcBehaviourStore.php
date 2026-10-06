@@ -5,7 +5,8 @@
  * Three tables:
  *   spc_bh_session  one visit: when, device, where it came from, how far it got (cart, checkout
  *                   step, order) and its path, a string of page keys (" index category:3 product:7 ")
- *   spc_bh_view     one page shown: which page, when, engaged time and scroll depth
+ *   spc_bh_view     one page shown: which page, when, engaged time, scroll depth and its Core Web
+ *                   Vitals (LCP, TTFB, FCP of a page load; INP and CLS of every page shown)
  *   spc_bh_event    what happened on it: add to cart, a checkout step, pay, an error, a search
  *
  * A page key is the page type PrestaShop gives the page (index, category, product, cart,
@@ -39,13 +40,22 @@ class SpcBehaviourStore
     /** checkout steps in order, as the shop window names them */
     public const STEPS = ['personal' => 1, 'addresses' => 2, 'delivery' => 3, 'payment' => 4, 'pay' => 5];
 
-    public const EVENTS = ['cart', 'step', 'pay', 'error', 'search'];
+    public const EVENTS = ['cart', 'step', 'pay', 'error', 'search', 'reorder'];
 
     /** engaged time buckets of the time-on-page histogram, in seconds */
     public const DWELL = [5, 15, 30, 60, 180, 600];
 
     /** sessions read into PHP for paths and funnels at most (the most recent ones) */
     public const SAMPLE = 20000;
+
+    /** Core Web Vitals: Google's limits for good and poor (CLS in thousandths), and the caps kept */
+    public const VITALS = [
+        'lcp' => ['col' => 'lcp_ms', 'good' => 2500, 'poor' => 4000, 'max' => 120000],
+        'inp' => ['col' => 'inp_ms', 'good' => 200, 'poor' => 500, 'max' => 60000],
+        'cls' => ['col' => 'cls', 'good' => 100, 'poor' => 250, 'max' => 65000],
+        'ttfb' => ['col' => 'ttfb_ms', 'good' => 800, 'poor' => 1800, 'max' => 120000],
+        'fcp' => ['col' => 'fcp_ms', 'good' => 1800, 'poor' => 3000, 'max' => 120000],
+    ];
 
     public static function table($name)
     {
@@ -95,6 +105,11 @@ class SpcBehaviourStore
                 `nav` TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 `active_ms` INT UNSIGNED NOT NULL DEFAULT 0,
                 `scroll` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                `lcp_ms` INT UNSIGNED NULL,
+                `inp_ms` INT UNSIGNED NULL,
+                `cls` SMALLINT UNSIGNED NULL,
+                `ttfb_ms` INT UNSIGNED NULL,
+                `fcp_ms` INT UNSIGNED NULL,
                 PRIMARY KEY (`id_view`),
                 UNIQUE KEY `session_vkey` (`id_session`, `vkey`),
                 KEY `session_seq` (`id_session`, `seq`),
@@ -115,6 +130,27 @@ class SpcBehaviourStore
         ];
         foreach ($sql as $q) {
             if (!Db::getInstance()->execute($q)) {
+                return false;
+            }
+        }
+
+        return self::migrate();
+    }
+
+    /** Columns added after a table was created (1.6.0: Core Web Vitals). */
+    public static function migrate()
+    {
+        $db = Db::getInstance();
+        $have = [];
+        foreach ($db->executeS('SHOW COLUMNS FROM ' . self::table('view')) ?: [] as $c) {
+            $have[$c['Field']] = true;
+        }
+        $add = [
+            'lcp_ms' => 'INT UNSIGNED NULL', 'inp_ms' => 'INT UNSIGNED NULL', 'cls' => 'SMALLINT UNSIGNED NULL',
+            'ttfb_ms' => 'INT UNSIGNED NULL', 'fcp_ms' => 'INT UNSIGNED NULL',
+        ];
+        foreach ($add as $col => $type) {
+            if (!isset($have[$col]) && !$db->execute('ALTER TABLE ' . self::table('view') . ' ADD `' . $col . '` ' . $type)) {
                 return false;
             }
         }
@@ -282,7 +318,18 @@ class SpcBehaviourStore
         $db = Db::getInstance();
         $ms = isset($m['ms']) ? max(0, min(self::MAX_MS, (int) $m['ms'])) : 0;
         $scroll = isset($m['s']) ? max(0, min(100, (int) $m['s'])) : 0;
-        $db->execute('UPDATE ' . self::table('view') . ' SET active_ms = GREATEST(active_ms, ' . $ms . '), scroll = GREATEST(scroll, ' . $scroll . ') WHERE id_view = ' . (int) $idView);
+        $set = ['active_ms = GREATEST(active_ms, ' . $ms . ')', 'scroll = GREATEST(scroll, ' . $scroll . ')'];
+        // the browser reports running values: LCP, INP and CLS only grow, TTFB and FCP are fixed
+        foreach (['l' => 'lcp', 'in' => 'inp', 'c' => 'cls', 'b' => 'ttfb', 'f' => 'fcp'] as $k => $name) {
+            if (isset($m[$k]) && is_numeric($m[$k])) {
+                $v = max(0, min(self::VITALS[$name]['max'], (int) $m[$k]));
+                $col = self::VITALS[$name]['col'];
+                $set[] = in_array($name, ['ttfb', 'fcp'], true)
+                    ? '`' . $col . '` = COALESCE(`' . $col . '`, ' . $v . ')'
+                    : '`' . $col . '` = GREATEST(COALESCE(`' . $col . '`, 0), ' . $v . ')';
+            }
+        }
+        $db->execute('UPDATE ' . self::table('view') . ' SET ' . implode(', ', $set) . ' WHERE id_view = ' . (int) $idView);
         $sid = (int) $session['id_session'];
         $db->execute('UPDATE ' . self::table('session') . ' SET active_ms = (SELECT COALESCE(SUM(active_ms), 0) FROM ' . self::table('view') . ' WHERE id_session = ' . $sid . ') WHERE id_session = ' . $sid);
     }
@@ -472,6 +519,7 @@ class SpcBehaviourStore
             JOIN ' . $S . ' s ON s.id_session = a.id_session WHERE ' . $w . ' AND a.page <> b.page GROUP BY a.page, b.page ORDER BY n DESC LIMIT 30) r'));
 
         $out += self::journeys($w, $n);
+        $out['vitals'] = self::vitals($w);
 
         // failure points from the events
         $out['failures'] = [
@@ -563,6 +611,78 @@ class SpcBehaviourStore
         ];
     }
 
+    /**
+     * Core Web Vitals as shoppers got them: the 75th percentile (the figure Google judges a page
+     * by) and the share of good, needs-improvement and poor page views, overall, by device and
+     * for the pages with the most measurements.
+     */
+    protected static function vitals($w)
+    {
+        $cols = [];
+        foreach (self::VITALS as $name => $v) {
+            $cols[] = 'v.`' . $v['col'] . '` ' . $name;
+        }
+        $rows = Db::getInstance()->executeS('SELECT v.page, s.device, ' . implode(', ', $cols) . ' FROM ' . self::table('view') . ' v
+            JOIN ' . self::table('session') . ' s ON s.id_session = v.id_session WHERE ' . $w . '
+            AND (v.lcp_ms IS NOT NULL OR v.inp_ms IS NOT NULL OR v.cls IS NOT NULL OR v.ttfb_ms IS NOT NULL)
+            ORDER BY v.id_view DESC LIMIT ' . self::SAMPLE);
+        $sum = function (array $rows) {
+            $out = [];
+            foreach (self::VITALS as $name => $v) {
+                $values = [];
+                foreach ($rows as $r) {
+                    if ($r[$name] !== null) {
+                        $values[] = (int) $r[$name];
+                    }
+                }
+                $out[$name] = self::rate($name, $values);
+            }
+
+            return $out;
+        };
+        $byDevice = [];
+        $byPage = [];
+        foreach ($rows as $r) {
+            $byDevice[self::DEVICES[min(2, (int) $r['device'])]][] = $r;
+            $byPage[$r['page']][] = $r;
+        }
+        uasort($byPage, function ($a, $b) { return count($b) - count($a); });
+        $pages = [];
+        foreach (array_slice($byPage, 0, 15, true) as $page => $list) {
+            $pages[] = ['page' => (string) $page, 'views' => count($list)] + $sum($list);
+        }
+        $devices = [];
+        foreach ($byDevice as $device => $list) {
+            $devices[$device] = $sum($list);
+        }
+
+        return ['views' => count($rows), 'all' => $sum($rows), 'devices' => $devices, 'pages' => $pages];
+    }
+
+    /** p75 of one metric, its rating and the shares of good, needs-improvement and poor. */
+    public static function rate($name, array $values)
+    {
+        $n = count($values);
+        if (!$n) {
+            return null;
+        }
+        sort($values);
+        $p75 = $values[(int) ceil(0.75 * $n) - 1];
+        $limits = self::VITALS[$name];
+        $good = 0;
+        $poor = 0;
+        foreach ($values as $v) {
+            $good += $v <= $limits['good'] ? 1 : 0;
+            $poor += $v > $limits['poor'] ? 1 : 0;
+        }
+
+        return [
+            'p75' => $p75, 'n' => $n,
+            'rating' => $p75 <= $limits['good'] ? 'good' : ($p75 <= $limits['poor'] ? 'ni' : 'poor'),
+            'good' => round(100 * $good / $n, 1), 'ni' => round(100 * ($n - $good - $poor) / $n, 1), 'poor' => round(100 * $poor / $n, 1),
+        ];
+    }
+
     /** The most recent matching visits, with their paths. */
     protected static function sessions($w, $limit)
     {
@@ -590,7 +710,7 @@ class SpcBehaviourStore
         if (!$s) {
             return ['error' => 'not found'];
         }
-        $views = $db->executeS('SELECT id_view, seq, at, page, url, nav, active_ms, scroll FROM ' . self::table('view') . ' WHERE id_session = ' . (int) $id . ' ORDER BY seq');
+        $views = $db->executeS('SELECT id_view, seq, at, page, url, nav, active_ms, scroll, lcp_ms, inp_ms, cls FROM ' . self::table('view') . ' WHERE id_session = ' . (int) $id . ' ORDER BY seq');
         $events = $db->executeS('SELECT id_view, at, type, detail, value FROM ' . self::table('event') . ' WHERE id_session = ' . (int) $id . ' ORDER BY id_event');
         $byView = [];
         foreach ($events as $e) {
@@ -600,7 +720,9 @@ class SpcBehaviourStore
         foreach ($views as $v) {
             $out['views'][] = [
                 'seq' => (int) $v['seq'], 'at' => (int) $v['at'], 'page' => $v['page'], 'url' => $v['url'], 'nav' => (int) $v['nav'],
-                'activeMs' => (int) $v['active_ms'], 'scroll' => (int) $v['scroll'], 'events' => isset($byView[(int) $v['id_view']]) ? $byView[(int) $v['id_view']] : [],
+                'activeMs' => (int) $v['active_ms'], 'scroll' => (int) $v['scroll'],
+                'lcp' => $v['lcp_ms'] === null ? null : (int) $v['lcp_ms'], 'inp' => $v['inp_ms'] === null ? null : (int) $v['inp_ms'], 'cls' => $v['cls'] === null ? null : (int) $v['cls'],
+                'events' => isset($byView[(int) $v['id_view']]) ? $byView[(int) $v['id_view']] : [],
             ];
         }
         $out['labels'] = self::labels(['x' => array_column($out['views'], 'page')], $idLang, $idShop);

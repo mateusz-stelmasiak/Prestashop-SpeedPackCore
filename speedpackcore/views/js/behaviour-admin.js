@@ -221,6 +221,8 @@
             g1.appendChild(box(T.dwell, [dwell(d.dwell)]));
             out.appendChild(g1);
 
+            if (d.vitals) { out.appendChild(box(T.vitals, vitals(d.vitals), true)); }
+
             var g2 = el('div', { 'class': 'spc-bh-grid' });
             g2.appendChild(box(T.routes, [list(d.routes, function (r) {
                 return el('li', {}, [path([r.from, r.to]), el('span', { 'class': 'spc-bh-count', title: fmt(T.routeShare, [r.share]), text: num(r.count) })]);
@@ -314,6 +316,47 @@
             return el('div', { 'class': 'spc-bh-scroll' }, [el('table', { 'class': 'spc-bh-table' }, [el('thead', {}, [head]), el('tbody', {}, body)])]);
         }
 
+        /** A Core Web Vitals figure as people read it: seconds, milliseconds, or the CLS score. */
+        function vital(name, v) {
+            if (v === null || v === undefined) { return '–'; }
+            if (name === 'cls') { return (v / 1000).toFixed(2); }
+            if (name === 'inp' || v < 1000) { return v + ' ms'; }
+            return (v / 1000).toFixed(2) + ' s';
+        }
+
+        function vitals(vt) {
+            if (!vt.views) { return [el('p', { 'class': 'spc-bh-muted', text: T.vitalsNone })]; }
+            var names = ['lcp', 'inp', 'cls', 'ttfb', 'fcp'];
+            var tiles = el('div', { 'class': 'spc-bh-vitals' }, names.filter(function (n) { return vt.all[n]; }).map(function (n) {
+                var r = vt.all[n];
+                return el('div', { 'class': 'spc-bh-vital r-' + r.rating }, [
+                    el('span', { text: T.vitalNames[n] }),
+                    el('b', { text: vital(n, r.p75) }),
+                    el('em', { text: T.ratings[r.rating] }),
+                    el('div', { 'class': 'spc-bh-share', title: T.ratings.good + ' ' + r.good + '% · ' + T.ratings.ni + ' ' + r.ni + '% · ' + T.ratings.poor + ' ' + r.poor + '%' }, [
+                        el('i', { 'class': 'g', style: 'width:' + r.good + '%' }), el('i', { 'class': 'n', style: 'width:' + r.ni + '%' }), el('i', { 'class': 'p', style: 'width:' + r.poor + '%' })
+                    ])
+                ]);
+            }));
+            var kids = [tiles];
+            var dev = Object.keys(vt.devices).filter(function (k) { return vt.devices[k].lcp || vt.devices[k].inp; }).map(function (k) {
+                var x = vt.devices[k];
+                return (T.device[k] || k) + ': LCP ' + vital('lcp', x.lcp && x.lcp.p75) + ', INP ' + vital('inp', x.inp && x.inp.p75) + ', CLS ' + vital('cls', x.cls && x.cls.p75);
+            });
+            if (dev.length) { kids.push(el('p', { 'class': 'help-block', text: dev.join(' · ') })); }
+            if (vt.pages.length) {
+                var cell = function (r, n) { return el('td', { 'class': r[n] ? 'r-' + r[n].rating : '', text: r[n] ? vital(n, r[n].p75) : '–' }); };
+                kids.push(el('div', { 'class': 'spc-bh-scroll' }, [el('table', { 'class': 'spc-bh-table spc-bh-vtable' }, [
+                    el('thead', {}, [el('tr', {}, [T.pageCols[0], T.pageCols[1]].concat(names.map(function (n) { return n.toUpperCase(); })).map(function (c) { return el('th', { text: c }); }))]),
+                    el('tbody', {}, vt.pages.map(function (r) {
+                        return el('tr', {}, [el('td', {}, [el('span', { 'class': 'spc-bh-page', text: name(r.page), title: r.page, on: function () { search(r.page); } })]), el('td', { text: num(r.views) })].concat(names.map(function (n) { return cell(r, n); })));
+                    }))
+                ])]));
+            }
+            kids.push(el('p', { 'class': 'help-block', text: fmt(T.vitalsNote, [vt.views]) }));
+            return kids;
+        }
+
         function funnel(f) {
             var wrap = el('div');
             var prev = null;
@@ -391,7 +434,8 @@
                     var line = el('div', {}, [
                         el('span', { 'class': 'spc-bh-muted', text: '+' + Math.floor(offset / 60) + ':' + ('0' + offset % 60).slice(-2) + '  ' }),
                         chip(v.page),
-                        el('span', { 'class': 'spc-bh-muted', text: '  ' + dur(v.activeMs) + (v.scroll ? ' · ' + v.scroll + '%' : '') + ' · ' + T.nav[v.nav] })
+                        el('span', { 'class': 'spc-bh-muted', text: '  ' + dur(v.activeMs) + (v.scroll ? ' · ' + v.scroll + '%' : '') + ' · ' + T.nav[v.nav]
+                            + (v.lcp !== null && v.lcp !== undefined ? ' · LCP ' + vital('lcp', v.lcp) : '') + (v.inp ? ' · INP ' + vital('inp', v.inp) : '') + (v.cls !== null && v.cls !== undefined ? ' · CLS ' + vital('cls', v.cls) : '') })
                     ]);
                     var kids = [line, el('div', { 'class': 'spc-bh-muted', text: v.url })];
                     v.events.forEach(function (e) {

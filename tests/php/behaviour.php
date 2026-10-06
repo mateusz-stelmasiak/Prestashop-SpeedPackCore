@@ -63,7 +63,7 @@ function visit(array $steps, array $env = [], array $first = [], $state = ['id' 
         foreach ($events as $e) { $msgs[] = ['t' => 'e', 'k' => $k] + $e; }
         // half the time first, then the total: the store keeps the larger running total
         $msgs[] = ['t' => 't', 'k' => $k, 'ms' => $sec * 500, 's' => 40];
-        $msgs[] = ['t' => 't', 'k' => $k, 'ms' => $sec * 1000, 's' => 80];
+        $msgs[] = ['t' => 't', 'k' => $k, 'ms' => $sec * 1000, 's' => 80] + (isset($s[5]) ? $s[5] : []);
         $now += $sec;
         $state = SpcBehaviourStore::collect($state, $msgs, $env, $now);
         $now += 2;
@@ -87,7 +87,7 @@ $orders = 0;
 for ($i = 0; $i < 10; ++$i) {
     $now = $T0 + count([]) + $i * 600;
     $state = visit([
-        ['index', 0, 20], ['category', 3, 30], ['product', 7, 40, [['e' => 'cart']]], ['cart', 0, 25],
+        ['index', 0, 20], ['category', 3, 30], ['product', 7, 40, [['e' => 'cart']], '/pl/product/7', $i < 8 ? ['l' => 1800, 'b' => 300, 'f' => 900, 'c' => 50, 'in' => 120] : ['l' => 5200, 'b' => 2000, 'f' => 3500, 'c' => 400, 'in' => 600]], ['cart', 0, 25],
         ['checkout', 0, 120, $checkout(4, [['e' => 'pay']])], ['order-confirmation', 0, 15, [], '/pl/potwierdzenie-zamowienia?id_order=' . (100 + $i)],
     ], ['id_customer' => $i < 5 ? 5 : 0, 'returning' => $i < 5]);
     SpcBehaviourStore::ordered($state['id'], 100 + $i, 89.5, $now);
@@ -106,7 +106,7 @@ for ($i = 0; $i < 4; ++$i) {
 // D: 8 phones from Google, one product page each
 for ($i = 0; $i < 8; ++$i) {
     $now = $T0 + 12000 + $i * 600;
-    visit([['product', 7, 4]], ['device' => 2], $google);
+    visit([['product', 7, 4, [], '/pl/product/7', ['l' => 3200, 'b' => 900, 'c' => 120, 'in' => 250]]], ['device' => 2], $google);
 }
 // E: 3 empty searches that end on a page that is gone
 for ($i = 0; $i < 3; ++$i) {
@@ -203,6 +203,21 @@ ok($r['failures']['emptySearch'] === [['key' => 'kimchy', 'count' => 3]] && $r['
 
 ok(count($r['sessions']) === 31 && $r['sessions'][0]['started'] >= $r['sessions'][30]['started'] && $r['sessions'][0]['outcome'] === 'browsing' && in_array('ordered', array_column($r['sessions'], 'outcome'), true), 'visits: most recent first, with their outcome');
 
+// ---------- Core Web Vitals
+$vt = $r['vitals'];
+echo '    vitals ', json_encode($vt['all']), "\n";
+ok($vt['views'] === 18 && $vt['all']['lcp']['p75'] === 3200 && $vt['all']['lcp']['rating'] === 'ni' && $vt['all']['lcp']['good'] == 44.4 && $vt['all']['lcp']['poor'] == 11.1, 'LCP: 75th percentile 3.2 s (needs improvement), 44% good, 11% poor');
+ok($vt['all']['cls']['p75'] === 120 && $vt['all']['inp']['p75'] === 250 && $vt['all']['inp']['rating'] === 'ni' && $vt['all']['ttfb']['p75'] === 900 && $vt['all']['fcp']['n'] === 10, 'CLS, INP, TTFB and FCP from the same page views');
+ok($vt['devices']['desktop']['lcp']['p75'] === 1800 && $vt['devices']['desktop']['lcp']['rating'] === 'good' && $vt['devices']['mobile']['lcp']['p75'] === 3200, 'by device: computers good, phones need improvement');
+ok($vt['pages'][0]['page'] === 'product:7' && $vt['pages'][0]['views'] === 18, 'by page: Kimchi has the measurements');
+$pv = (int) q("SELECT id_view FROM bht_spc_bh_view WHERE page = 'product:7' AND lcp_ms = 1800 LIMIT 1");
+$sid = (int) q('SELECT id_session FROM bht_spc_bh_view WHERE id_view = ' . $pv);
+$vk = q('SELECT vkey FROM bht_spc_bh_view WHERE id_view = ' . $pv);
+SpcBehaviourStore::collect(['id' => $sid, 'last' => $end], [['t' => 't', 'k' => $vk, 'ms' => 1, 'l' => 900, 'b' => 50, 'c' => 70, 'in' => 999999]], ['id_shop' => 1, 'host' => 'sklep.test'], $end + 1);
+$row = $db->getRow('SELECT lcp_ms, ttfb_ms, cls, inp_ms FROM bht_spc_bh_view WHERE id_view = ' . $pv);
+ok((int) $row['lcp_ms'] === 1800 && (int) $row['ttfb_ms'] === 300 && (int) $row['cls'] === 70 && (int) $row['inp_ms'] === 60000, 'running values: LCP never goes down, TTFB is the first one, CLS grows, INP capped ' . json_encode($row));
+$db->execute('UPDATE bht_spc_bh_view SET cls = 50, inp_ms = 120 WHERE id_view = ' . $pv);
+
 // ---------- filters and search
 $n = function ($f) use ($R) { $x = $R($f); return isset($x['kpi']) ? $x['kpi']['sessions'] : -1; };
 ok($n(['device' => 'mobile']) === 8 && $n(['device' => 'tablet']) === 4 && $n(['source' => 'search']) === 8 && $n(['source' => 'email']) === 3, 'filters: device and source');
@@ -233,6 +248,8 @@ if (getenv('SPC_BH_REPORT')) {
 
 // ---------- clean-up
 ok(SpcBehaviourStore::purge(90, $end) === 1 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_session') === 32 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_view WHERE at < ' . ($T0 - 86400)) === 0, 'visits older than the kept days go, with their pages');
+$db->execute('ALTER TABLE bht_spc_bh_view DROP lcp_ms, DROP inp_ms, DROP cls, DROP ttfb_ms, DROP fcp_ms');
+ok(SpcBehaviourStore::install() && count($db->executeS("SHOW COLUMNS FROM bht_spc_bh_view WHERE Field IN ('lcp_ms', 'inp_ms', 'cls', 'ttfb_ms', 'fcp_ms')")) === 5 && (int) q('SELECT COUNT(*) FROM bht_spc_bh_session') === 32, 'tables from 1.5.0 get the Core Web Vitals columns, visits kept');
 ok(SpcBehaviourStore::uninstall() && q("SHOW TABLES LIKE 'bht_spc_bh_session'") === false, 'uninstall drops the tables');
 foreach (['product_lang', 'category_lang', 'cms_lang', 'customer'] as $t) { $db->execute("DROP TABLE IF EXISTS bht_$t"); }
 echo "ALL OK\n";

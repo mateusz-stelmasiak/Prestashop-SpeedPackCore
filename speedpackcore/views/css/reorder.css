@@ -1,0 +1,17 @@
+/**
+ * SpeedPack Core - "Order the same as last time".
+ *
+ * @author    Alhambra
+ * @copyright 2026 Mateusz Stelmasiak (Alhambra)
+ * @license   https://opensource.org/licenses/MIT MIT License
+ */
+.spc-reorder { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; margin: 0 0 20px; padding: 18px 20px; border: 1px solid rgba(0, 0, 0, .08); border-radius: 8px; background: #f6f9f4; }
+.spc-reorder h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.spc-reorder-text { flex: 1 1 280px; min-width: 0; }
+.spc-reorder-lines { margin: 0; overflow-wrap: anywhere; }
+.spc-reorder-meta { margin: 4px 0 0; font-size: .875rem; opacity: .75; }
+.spc-reorder form { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; }
+.spc-reorder small { font-size: .75rem; opacity: .7; }
+.spc-reorder-tile { margin: 0; }
+.spc-reorder-tile .link-item { width: 100%; border: 0; background: transparent; cursor: pointer; }
+@media (max-width: 575px) { .spc-reorder form, .spc-reorder-go { width: 100%; } }

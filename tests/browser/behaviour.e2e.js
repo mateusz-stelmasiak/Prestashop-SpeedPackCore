@@ -65,12 +65,27 @@ const all = [];
   await p.waitForTimeout(1000);
   ok((await got()).filter((x) => x.e === 'cart').length === 0, 'a line removed is not an add');
 
+  // --- Core Web Vitals: a layout shift, a slow tap
+  await p.waitForTimeout(700);
+  await p.evaluate(() => { const d = document.createElement('div'); d.style.height = '300px'; document.body.insertBefore(d, document.body.firstChild); });
+  await p.waitForTimeout(600);
+  await p.evaluate(() => { const b = document.createElement('button'); b.id = 'slow'; b.textContent = 'slow'; b.addEventListener('click', () => { const t = performance.now(); while (performance.now() - t < 260) { /* busy */ } b.textContent = 'done'; }); document.getElementById('wrapper').prepend(b); });
+  await p.click('#slow');
+  await p.waitForTimeout(500);
+
   // --- the cart page: an error shown
   await p.goto(BASE + '/pl/koszyk');
   await p.evaluate(() => { const d = document.createElement('div'); d.className = 'alert alert-danger'; d.textContent = '  Produkt   niedostępny '; document.getElementById('notifications').appendChild(d); });
   await p.waitForTimeout(2200);
   m = await got();
   ok(m.some((x) => x.e === 'error' && x.d === 'Produkt niedostępny'), 'an error message on the cart page');
+  const pv = m.filter((x) => x.t === 't' && x.k === prod.k).pop() || {};
+  console.log('    product page vitals', JSON.stringify(pv));
+  ok(pv.l > 0 && pv.b > 0 && pv.f > 0 && pv.f <= pv.l, 'Core Web Vitals of a page load: LCP, TTFB, FCP');
+  ok(pv.c >= 100, 'a 300 px shift after load counts as layout shift (CLS ' + (pv.c / 1000) + ')');
+  ok(pv.in >= 250, 'a tap answered after 260 ms of work: INP ' + pv.in + ' ms');
+  const catT = all.filter((x) => x.t === 't' && x.k === cat.k).pop() || {};
+  ok(catT.l === undefined && catT.b === undefined, 'an InstantNav swap has no LCP or TTFB of its own');
 
   // --- checkout steps, pay
   await p.goto(BASE + '/pl/zamowienie');
@@ -100,6 +115,12 @@ const all = [];
   const ad = views(m)[0];
   ok(ad.u === '/pl/3-kategoria.html?page=2' && ad.a && ad.a.s === 'fb' && ad.a.m === 'cpc' && ad.a.c === 'Jesien' && ad.a.g === 1, 'campaign tags sent apart, and kept out of the address');
   ok(m.every((x) => !JSON.stringify(x).includes('Mozilla') && !JSON.stringify(x).includes('HeadlessChrome')), 'no browser string is sent');
+
+  // --- a tap on "Order the same as last time"
+  await p.evaluate(() => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-spc-reorder', ''); b.textContent = 'Zamów ponownie'; document.getElementById('wrapper').prepend(b); });
+  await p.click('[data-spc-reorder]');
+  await p.waitForTimeout(400);
+  ok((await got()).some((x) => x.e === 'reorder'), 'a tap on Repeat last order is recorded (sent at once)');
 
   // --- phones
   const ph = await b.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -156,6 +177,8 @@ const all = [];
       selects: Array.prototype.map.call(document.querySelectorAll('[data-spc-bh-select]'), (s) => s.options.length)
     }));
     ok(st.kpi === '31' && st.bars > 0 && st.funnel >= 10 + 7 && st.sessions === 31, 'the tab draws the report: KPIs, timeline, funnel and time-on-page bars, visits ' + JSON.stringify(st));
+    const vit = await a.evaluate(() => ({ tiles: Array.prototype.map.call(document.querySelectorAll('.spc-bh-vital'), (t) => t.className.replace('spc-bh-vital ', '') + ':' + t.querySelector('b').textContent), rows: document.querySelectorAll('.spc-bh-vtable tbody tr').length }));
+    ok(vit.tiles.length === 5 && vit.tiles[0] === 'r-ni:3.20 s' && vit.tiles.indexOf('r-ni:0.12') !== -1 && vit.rows >= 1, 'Core Web Vitals: the 75th percentiles with their ratings, and a table by page ' + JSON.stringify(vit));
     ok(st.kimchi && st.zakwas && st.img === 0 && st.pwned === undefined, 'names as text: a product name with markup shows as text, nothing runs');
     ok(st.selects.join(',') === '4,5,4,7,5,3', 'filters: range, bucket, device, source, outcome, shopper');
     if (process.env.SPC_SHOTS) { await a.screenshot({ path: process.env.SPC_SHOTS + '/behaviour.png', fullPage: true }); }

@@ -42,6 +42,8 @@ ok(!array_diff(['cart', 'category', 'checkout', 'index', 'product', 'search'], $
 ok((int) $db->getValue("SELECT COUNT(*) FROM bhr_spc_bh_view WHERE page = 'product:7'") >= 1 && (int) $db->getValue("SELECT COUNT(*) FROM bhr_spc_bh_view WHERE page = 'category:3' AND nav = 1") >= 1, 'objects and InstantNav swaps kept');
 ok((int) $db->getValue('SELECT MAX(checkout) FROM bhr_spc_bh_session') === 5 && (int) $db->getValue('SELECT COUNT(*) FROM bhr_spc_bh_session WHERE cart_at > 0') >= 1, 'checkout steps, pay and the add to cart reach the visit');
 ok((int) $db->getValue('SELECT SUM(active_ms) FROM bhr_spc_bh_view') > 3000, 'engaged time kept');
+$pv = $db->getRow("SELECT lcp_ms, ttfb_ms, fcp_ms, cls, inp_ms FROM bhr_spc_bh_view WHERE page = 'product:7' AND lcp_ms IS NOT NULL LIMIT 1");
+ok($pv && $pv['lcp_ms'] > 0 && $pv['ttfb_ms'] > 0 && $pv['cls'] >= 100 && $pv['inp_ms'] >= 250, 'Core Web Vitals from Chromium stored: ' . json_encode($pv));
 ok($db->getValue("SELECT detail FROM bhr_spc_bh_event WHERE type = 'search'") === 'kimchy' && $db->getValue("SELECT detail FROM bhr_spc_bh_event WHERE type = 'error'") === 'Produkt niedostępny', 'a search and an error, word for word');
 $ad = array_values(array_filter($v, function ($m) { return isset($m['a']); }));
 ok($ad && SpcBehaviourStore::source($ad[0], '127.0.0.1') === ['ads', 'fb', 'jesien'], 'the ad link as the browser sent it: source ads, fb, its campaign (a visit keeps the source it started with)');

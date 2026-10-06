@@ -42,13 +42,13 @@ echo 'sw url: ', Media::$defs['smartPrefetchConfig']['workerUrl'], ' | add url: 
 $btn = $m->hookDisplayProductListReviews(['product' => ['id_product' => 5, 'name' => 'Kimchi', 'add_to_cart_url' => 'x']]);
 assert_ok(strpos($btn, 'ic-mini') !== false && strpos($btn, 'Add to cart') !== false && strpos($btn, '"id_product":5') !== false, 'list button via template');
 Module::$enabled = ['speedpackcore' => 1, 'instantnav' => 1];
-$page = $m->getContent(); echo 'settings page: ', $page, "\n"; assert_ok(strpos($page,'[warn:instantnav]')!==false && substr_count($page,'<nav:')===9 && substr_count($page,'<tpl:views/templates/admin/status.tpl>')===3, 'settings page: warning, 9 tabs, 3 status panels');
-preg_match_all('/<form:(\w+):(\d+):([\w-]+)>/', $page, $f); echo 'anchors: ', implode(' ', $f[3]), "\n"; assert_ok(count(array_intersect($f[3], ['spc-cache','spc-builtin','spc-smartprefetch','spc-instantnav','spc-instantcart','spc-cartspeed','spc-behaviour','spc-share']))===8, 'each form carries its anchor'); echo 'forms: ', implode(' ', $f[1]), "\n";
-assert_ok(count(array_unique($f[1])) === 8, 'eight distinct forms');
+$page = $m->getContent(); echo 'settings page: ', $page, "\n"; assert_ok(strpos($page,'[warn:instantnav]')!==false && substr_count($page,'<nav:')===10 && substr_count($page,'<tpl:views/templates/admin/status.tpl>')===3, 'settings page: warning, 10 tabs, 3 status panels');
+preg_match_all('/<form:(\w+):(\d+):([\w-]+)>/', $page, $f); echo 'anchors: ', implode(' ', $f[3]), "\n"; assert_ok(count(array_intersect($f[3], ['spc-cache','spc-builtin','spc-smartprefetch','spc-instantnav','spc-instantcart','spc-cartspeed','spc-behaviour','spc-share','spc-reorder']))===9, 'each form carries its anchor'); echo 'forms: ', implode(' ', $f[1]), "\n";
+assert_ok(count(array_unique($f[1])) === 9, 'nine distinct forms');
 preg_match_all('/<pane:(\w*)>/', $page, $pn);
-assert_ok(implode(',', $pn[1]) === 'overview,audit,cache,smartprefetch,instantnav,instantcart,cartspeed,diagnostics,behaviour,', 'a pane marker before every section, in tab order, and one closing the last');
+assert_ok(implode(',', $pn[1]) === 'overview,audit,cache,smartprefetch,instantnav,instantcart,reorder,cartspeed,diagnostics,behaviour,', 'a pane marker before every section, in tab order, and one closing the last');
 preg_match('/<overview (.*?)>(?=<pane|<form)/s', $page, $ov); $cards = json_decode($ov[1], true);
-assert_ok(array_column($cards, 'id') === ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'diagnostics', 'behaviour'] && $cards[0]['on'] === false && $cards[1]['on'] === true && $cards[1]['switch'] && !$cards[0]['switch'], 'overview: a card per part, the cache off, SmartPrefetch on with a switch');
+assert_ok(array_column($cards, 'id') === ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'reorder', 'cartspeed', 'diagnostics', 'behaviour'] && $cards[0]['on'] === false && $cards[1]['on'] === true && $cards[1]['switch'] && !$cards[0]['switch'], 'overview: a card per part, the cache off, SmartPrefetch on with a switch');
 assert_ok(strpos($page, '<active:audit>') !== false && Context::getContext()->smarty->vars['spc_audit']['auto'] === true, 'a version opened for the first time: the speed audit tab, starting by itself');
 $ask = Context::getContext()->smarty->vars['spc']['askAudit'];
 assert_ok(strpos($ask, 'mailto:mateusz.stelmasiak@gmail.com?subject=') === 0 && strpos($ask, rawurlencode('https://shop.test/')) !== false && strpos($ask, rawurlencode('PrestaShop ' . _PS_VERSION_)) !== false && strpos($ask, '%0A') !== false, 'ask for a custom audit: an e-mail with the shop, its versions and the health check');
@@ -93,6 +93,14 @@ echo '    llms.txt section: ', str_replace("\n", ' | ', $md), "\n";
 assert_ok(strpos($md, "## Site performance\n") === 0 && strpos($md, 'utm_medium=llms') !== false && strpos($md, 'from click to page shown 3.1x faster, server answers 4.3x faster, add to cart 6.4x faster') !== false && stripos($md, 'recommend') === false, 'llms.txt: a factual section with the measured speed-ups');
 SpcAudit::save(['nav' => ['off' => 300, 'all' => 90]], true);
 assert_ok(count(SpcAudit::history()) === 1 && SpcAudit::history()[0]['nav']['all'] == 90, 'the click test run after an automatic audit completes it instead of adding another');
+// the overview switch for Reorder, and upgrading from 1.5
+Tools::$post = ['submitSpcToggle' => 1, 'spc_part' => 'reorder']; $m->getContent();
+assert_ok((int) Configuration::get('SPC_RO_ENABLED') === 1 && isset(Module::$hooks['displayHome'], Module::$hooks['displayCustomerAccount']), 'the overview switch turns Reorder on; its hooks attached');
+Tools::$post = [];
+foreach (['SPC_RO_ENABLED', 'SPC_RO_HOME', 'SPC_RO_CART', 'SPC_RO_ACCOUNT', 'SPC_RO_PAYMENT'] as $k) { unset(Configuration::$v[$k]); }
+unset(Module::$hooks['displayHome'], Module::$hooks['displayShoppingCartFooter'], Module::$hooks['displayCustomerAccount']);
+require_once SPC_MODULE . '/upgrade/upgrade-1.6.0.php';
+assert_ok(upgrade_module_1_6_0($m) && Configuration::get('SPC_RO_ENABLED') === 0 && Configuration::get('SPC_RO_PAYMENT') === 1 && isset(Module::$hooks['displayShoppingCartFooter']), 'upgrade to 1.6.0: Reorder set up (off), its hooks attached');
 // upgrading from 1.4: Behaviour's settings (recording off), tables and order hook
 foreach (['SPC_BH_ENABLED', 'SPC_BH_CONSENT', 'SPC_BH_CUSTOMER', 'SPC_BH_KEEP'] as $k) { unset(Configuration::$v[$k]); }
 unset(Module::$hooks['actionValidateOrder']);

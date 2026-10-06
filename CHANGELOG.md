@@ -1,5 +1,13 @@
 # Changelog
 
+## SpeedPack Core 1.6.0
+
+**Reorder**, a new part: "Order the same as last time?" for signed-in shoppers who have ordered before – a card on the home page and in an empty cart, a tile in the account. One tap puts the last order's products in the cart (leaving out, and naming, what is no longer sold or in stock), uses the same addresses and carrier, and saves the checkout steps as done the way PrestaShop's checkout does (with its cart checksum), so the checkout opens at payment. Off until switched on.
+
+**Core Web Vitals in Behaviour:** LCP, INP, CLS, TTFB and FCP measured in shoppers' browsers (InstantNav swaps get INP and CLS; prerendered pages count from when they were shown), shown as the 75th percentile with good / needs-improvement / poor shares, by page and by device, and for each page of a visit. Tables from 1.5.0 get the new columns on upgrade.
+
+Behaviour also records a tap on "Order the same as last time".
+
 ## SpeedPack Core 1.5.0
 
 **Behaviour**, a new part: what shoppers do on the shop, page by page.

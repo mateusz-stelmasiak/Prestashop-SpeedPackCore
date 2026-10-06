@@ -283,7 +283,7 @@ class SpcBehaviour extends SpcFeature
             'returningShopper' => $this->l('ordered before'),
             'customer' => $this->l('customer #%s'),
             'nav' => [$this->l('loaded'), $this->l('InstantNav'), $this->l('back')],
-            'events' => ['cart' => $this->l('added to cart'), 'step' => $this->l('checkout step: %s'), 'pay' => $this->l('pressed pay'), 'error' => $this->l('error: %s'), 'search' => $this->l('searched "%1$s": %2$s results')],
+            'events' => ['reorder' => $this->l('repeated the last order'), 'cart' => $this->l('added to cart'), 'step' => $this->l('checkout step: %s'), 'pay' => $this->l('pressed pay'), 'error' => $this->l('error: %s'), 'search' => $this->l('searched "%1$s": %2$s results')],
             'sample' => $this->l('Paths and funnel from the %1$d most recent of %2$d visits.'),
             'types' => [
                 'index' => $this->l('Home'), 'category' => $this->l('Category'), 'product' => $this->l('Product'), 'cms' => $this->l('Page'),
@@ -293,6 +293,11 @@ class SpcBehaviour extends SpcFeature
                 'new-products' => $this->l('New products'), 'prices-drop' => $this->l('Price drops'), 'best-sales' => $this->l('Best sellers'), 'history' => $this->l('Order history'),
                 'order-detail' => $this->l('Order details'), 'module' => $this->l('Module page'), '…' => '…',
             ],
+            'vitals' => $this->l('Core Web Vitals, as shoppers got them'),
+            'vitalNames' => ['lcp' => $this->l('Largest paint (LCP)'), 'inp' => $this->l('Response to a tap (INP)'), 'cls' => $this->l('Layout shift (CLS)'), 'ttfb' => $this->l('Server answer (TTFB)'), 'fcp' => $this->l('First paint (FCP)')],
+            'ratings' => ['good' => $this->l('Good'), 'ni' => $this->l('Needs improvement'), 'poor' => $this->l('Poor')],
+            'vitalsNote' => $this->l('75th percentile of %d page views, the figure Google judges a page by. Chrome and Edge report them; InstantNav swaps have no LCP of their own.'),
+            'vitalsNone' => $this->l('No measurements yet: Chrome and Edge report them as shoppers browse.'),
             'minutes' => $this->l('%s min'), 'seconds' => $this->l('%s s'), 'hours' => $this->l('%s h'),
             'close' => $this->l('Close'),
         ];

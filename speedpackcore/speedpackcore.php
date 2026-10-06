@@ -6,6 +6,7 @@
  *   InstantNav     menu clicks swap the page content instead of reloading the page
  *   InstantCart    add to cart answers at once; quick clicks become one request
  *   CartSpeed      remembers address lookups for the page (an Address override)
+ *   Reorder        the last order again in one tap, the checkout opening at payment
  *   Behaviour      what shoppers do: time on each page, routes, paths to an order, failure points
  *
  * Each part lives in classes/ and can be switched off on its own on the configuration page. The
@@ -34,6 +35,7 @@ require_once dirname(__FILE__) . '/classes/SpcCare.php';
 require_once dirname(__FILE__) . '/classes/SpcWeight.php';
 require_once dirname(__FILE__) . '/classes/SpcDiagnostics.php';
 require_once dirname(__FILE__) . '/classes/SpcBehaviour.php';
+require_once dirname(__FILE__) . '/classes/SpcReorder.php';
 
 class SpeedPackCore extends Module
 {
@@ -70,6 +72,9 @@ class SpeedPackCore extends Module
     /** @var SpcBehaviour */
     private $behaviour;
 
+    /** @var SpcReorder */
+    private $reorder;
+
     /** @var bool the settings page of a version opened for the first time */
     private $autoAudit = false;
 
@@ -77,7 +82,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.5.0';
+        $this->version = '1.6.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -96,6 +101,7 @@ class SpeedPackCore extends Module
         $this->instantCart = new SpcInstantCart($this, $this->context, 'InstantCart');
         $this->diagnostics = new SpcDiagnostics($this, $this->context, $this->l('Health check'));
         $this->behaviour = new SpcBehaviour($this, $this->context, $this->l('Behaviour'));
+        $this->reorder = new SpcReorder($this, $this->context, $this->l('Reorder'));
     }
 
     /** @return SpcFeature[] by id */
@@ -106,6 +112,7 @@ class SpeedPackCore extends Module
             'smartprefetch' => $this->smartPrefetch,
             'instantnav' => $this->instantNav,
             'instantcart' => $this->instantCart,
+            'reorder' => $this->reorder,
             'behaviour' => $this->behaviour,
         ];
     }
@@ -155,7 +162,8 @@ class SpeedPackCore extends Module
             && $this->registerHook('displayProductListReviews')
             && $this->registerHook('actionValidateOrder')
             && $this->registerHook('displayFooter')
-            && $this->registerHook('displayLlmsTxt');
+            && $this->registerHook('displayLlmsTxt')
+            && $this->reorder->registerHooks();
     }
 
     /* ------------------------------------------------------------------ *
@@ -199,6 +207,21 @@ class SpeedPackCore extends Module
     public function hookDisplayProductListReviews($params)
     {
         return SpcAudit::off('instantcart') ? '' : $this->instantCart->hookDisplayProductListReviews($params);
+    }
+
+    public function hookDisplayHome($params)
+    {
+        return $this->reorder->show('home');
+    }
+
+    public function hookDisplayShoppingCartFooter($params)
+    {
+        return $this->reorder->show('cart');
+    }
+
+    public function hookDisplayCustomerAccount($params)
+    {
+        return $this->reorder->show('account');
     }
 
     public function hookActionValidateOrder($params)
@@ -318,6 +341,7 @@ class SpeedPackCore extends Module
             'cartspeed' => ['submitSpcCartSpeed'],
             'diagnostics' => ['submitSpcMultiFront'],
             'behaviour' => ['submitSpcBehaviour'],
+            'reorder' => ['submitSpcReorder'],
             'overview' => ['submitSpcShare'],
         ];
         foreach ($forms as $tab => $submits) {
@@ -334,7 +358,7 @@ class SpeedPackCore extends Module
     /** The one-click switches of the overview. */
     private function toggle($part)
     {
-        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED, 'behaviour' => SpcBehaviour::K_ENABLED];
+        $keys = ['smartprefetch' => SpcSmartPrefetch::K_ENABLED, 'instantnav' => SpcInstantNav::K_ENABLED, 'instantcart' => SpcInstantCart::K_ENABLED, 'cartspeed' => self::K_CARTSPEED, 'behaviour' => SpcBehaviour::K_ENABLED, 'reorder' => SpcReorder::K_ENABLED];
         if (!isset($keys[$part])) {
             return '';
         }
@@ -363,7 +387,7 @@ class SpeedPackCore extends Module
     {
         $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
         $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
-        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName];
+        $names = ['cache' => 'Cache', 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
         $what = [
             'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
             'smartprefetch' => $this->l('The next page before the click.'),
@@ -372,6 +396,7 @@ class SpeedPackCore extends Module
             'cartspeed' => $this->l('A lighter cart page.'),
             'diagnostics' => $this->l('The PrestaShop tuning guide, checked on this server.'),
             'behaviour' => $this->l('What shoppers do, page by page.'),
+            'reorder' => $this->l('The last order again, in one tap.'),
         ];
         $cards = [];
         foreach ($this->summaries() as $id => $sum) {
@@ -379,7 +404,7 @@ class SpeedPackCore extends Module
                 'id' => $id,
                 'name' => $names[$id],
                 'what' => $what[$id],
-                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'behaviour'], true),
+                'switch' => in_array($id, ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'reorder', 'behaviour'], true),
                 'level' => isset($sum['level']) ? $sum['level'] : ($sum['on'] ? 'ok' : 'off'),
             ];
         }

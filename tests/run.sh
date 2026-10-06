@@ -57,6 +57,7 @@ if php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' && php -r 'try { new PD
   WP=$(port)
   serve "$WP" php -S "127.0.0.1:$WP" "$T/php/mock/weight-shop.php" && step "php: health check (MariaDB)" php php/health.php "$WP"
   step "php: Behaviour (MariaDB)" php php/behaviour.php
+  step "php: Reorder (MariaDB)" php php/reorder.php
   DB=1
 else skipped "php: health check, Behaviour (MariaDB)" "no database, see README"; fi
 

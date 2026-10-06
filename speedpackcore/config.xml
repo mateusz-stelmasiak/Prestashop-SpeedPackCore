@@ -2,7 +2,7 @@
 <module>
     <name>speedpackcore</name>
     <displayName><![CDATA[SpeedPack Core]]></displayName>
-    <version><![CDATA[1.5.0]]></version>
+    <version><![CDATA[1.6.0]]></version>
     <description><![CDATA[Speed-ups in one module: Redis, APCu or Memcached data cache, pages fetched before the click, menu clicks without a reload, instant cart changes and a lighter cart page.]]></description>
     <author><![CDATA[Alhambra]]></author>
     <tab><![CDATA[front_office_features]]></tab>

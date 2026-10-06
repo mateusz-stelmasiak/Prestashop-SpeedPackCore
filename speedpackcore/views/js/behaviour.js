@@ -15,6 +15,8 @@
  *   last minute). Scroll depth: how far down the page got.
  * - Events: add to cart (the theme's or InstantCart's), each checkout step, the pay button,
  *   error messages in the cart and checkout, searches with their result count.
+ * - Core Web Vitals as the shopper got them: LCP, TTFB and FCP of a page load; INP and CLS of
+ *   every page shown, InstantNav swaps included (measured as Chrome's field data measures them).
  *
  * Messages go out with navigator.sendBeacon: they survive the page closing and never hold it up.
  * Nothing is stored in the browser; the shop ties the pages of a visit together itself. The page
@@ -47,6 +49,10 @@
     var flushTimer = null;
     var lastCart = 0;
     var started = false;
+    var loadSeen = false;
+    // the page load's own figures (they belong to the first page view of the document)
+    var doc = { lcp: 0, ttfb: 0, fcp: 0 };
+    var supported = { cls: false };
 
     function now() { return new Date().getTime(); }
 
@@ -138,7 +144,8 @@
     function begin(nav) {
         end();
         var info = pageInfo();
-        view = { k: vkey(), type: info.type, ms: 0, scroll: depth(), step: '', errors: {}, sentMs: -1 };
+        view = { k: vkey(), type: info.type, ms: 0, scroll: depth(), step: '', errors: {}, sent: '', inp: 0, cls: 0, win: 0, winStart: 0, winLast: 0, load: nav === 0 && !loadSeen };
+        if (nav === 0) { loadSeen = true; }
         var m = { t: 'v', k: view.k, p: info.type, i: info.id, u: address(), n: nav, d: device() };
         if (nav === 0) {
             // where the visit came from: only the first page of a document can say
@@ -155,9 +162,18 @@
     function end() {
         if (!view) { return; }
         tick();
-        if (view.ms !== view.sentMs) {
-            queue.push({ t: 't', k: view.k, ms: view.ms, s: view.scroll });
-            view.sentMs = view.ms;
+        var m = { t: 't', k: view.k, ms: view.ms, s: view.scroll };
+        if (view.inp) { m.in = Math.round(view.inp); }
+        if (view.cls || (view.ms > 0 && supported.cls)) { m.c = Math.round(view.cls * 1000); }
+        if (view.load) {
+            if (doc.lcp) { m.l = Math.round(doc.lcp); }
+            if (doc.ttfb) { m.b = Math.round(doc.ttfb); }
+            if (doc.fcp) { m.f = Math.round(doc.fcp); }
+        }
+        var sig = JSON.stringify(m);
+        if (sig !== view.sent) {
+            queue.push(m);
+            view.sent = sig;
         }
     }
 
@@ -249,6 +265,11 @@
         input();
         var t = e.target;
         while (t && t !== document.body && t.nodeType === 1) {
+            if (t.hasAttribute && t.hasAttribute('data-spc-reorder')) {
+                event('reorder', '', undefined, true);
+                flush();
+                return;
+            }
             if (t.id === 'payment-confirmation' || (t.matches && t.matches('#payment-confirmation button, #payment-confirmation [type=submit]'))) {
                 event('pay', '', undefined, true);
                 return;
@@ -265,6 +286,48 @@
             if (action === 'add-to-cart' || action === 'instant-add') { cartAdded(); }
         });
         ps.on('instantCartAdded', cartAdded);
+    }
+
+    /* ---------------------------------------------------------------- *
+     *  Core Web Vitals
+     * ---------------------------------------------------------------- */
+
+    function observe(type, fn, extra) {
+        if (!window.PerformanceObserver) { return false; }
+        try {
+            var opts = { type: type, buffered: true };
+            Object.keys(extra || {}).forEach(function (k) { opts[k] = extra[k]; });
+            new PerformanceObserver(function (list) { list.getEntries().forEach(fn); }).observe(opts);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function vitals() {
+        // a prerendered page counts from when it was shown, not from when it was built
+        var navEntry = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+        var shown = navEntry && navEntry.activationStart > 0 ? navEntry.activationStart : 0;
+        if (navEntry && navEntry.responseStart > 0) { doc.ttfb = Math.max(0, navEntry.responseStart - shown); }
+        observe('paint', function (e) { if (e.name === 'first-contentful-paint') { doc.fcp = Math.max(0, e.startTime - shown); } });
+        // the browser stops reporting candidates at the first input: the last one is the LCP
+        observe('largest-contentful-paint', function (e) { doc.lcp = Math.max(0, e.startTime - shown); });
+        // CLS: the worst burst of shifts (gaps under 1 s, at most 5 s long) not caused by input
+        supported.cls = observe('layout-shift', function (e) {
+            if (!view || e.hadRecentInput) { return; }
+            if (view.win && e.startTime - view.winLast < 1000 && e.startTime - view.winStart < 5000) {
+                view.win += e.value;
+            } else {
+                view.win = e.value;
+                view.winStart = e.startTime;
+            }
+            view.winLast = e.startTime;
+            view.cls = Math.max(view.cls, view.win);
+        });
+        // INP: the slowest interaction, from input to the next paint
+        var slow = function (e) { if (view && (e.interactionId || e.entryType === 'first-input')) { view.inp = Math.max(view.inp, e.duration); } };
+        observe('event', slow, { durationThreshold: 16 });
+        observe('first-input', slow);
     }
 
     /* ---------------------------------------------------------------- *
@@ -295,6 +358,7 @@
         setInterval(tick, TICK);
         listenToShop();
         begin(0);
+        vitals();
     }
 
     /** With "only after analytics consent": a banner's answer, read several ways. */
