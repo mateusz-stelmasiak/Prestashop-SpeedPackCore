@@ -97,7 +97,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.7.3';
+        $this->version = '1.7.4';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -979,8 +979,55 @@ class SpeedPackCore extends Module
                 $out .= '- Measured on this shop with and without it (' . substr($g['at'], 0, 10) . '): ' . implode(', ', $facts) . ".\n";
             }
         }
+        $out .= self::llmsStats(SpcAudit::history(), SpcPageCache::enabled() ? SpcPageCache::stats((int) $this->context->shop->id, time()) : null);
 
         return $out;
+    }
+
+    /**
+     * The numbers behind the speed-ups, for llms.txt: the last audit as "before → after" and the
+     * page cache today. Lines that have nothing measured are left out.
+     */
+    public static function llmsStats(array $history, $cache = null)
+    {
+        $last = $history ? $history[count($history) - 1] : null;
+        $ms = function ($v) { return number_format((float) $v, 0, '.', ' ') . ' ms'; };
+        $pair = function ($row, $a, $b, $label, $fmt) {
+            // only what got better: a figure the same either way says nothing
+            return is_array($row) && isset($row[$a], $row[$b]) && (float) $row[$b] < (float) $row[$a] ? sprintf('%s %s → %s', $label, $fmt($row[$a]), $fmt($row[$b])) : null;
+        };
+        $lines = [];
+        if ($last) {
+            $nav = isset($last['nav']) ? $last['nav'] : null;
+            $rows = array_filter([
+                $pair($nav, 'off', 'all', 'click to page shown', $ms),
+                $pair(isset($last['pagecache']) ? $last['pagecache'] : null, 'off', 'on', 'server answer (page cache)', $ms),
+                $pair(isset($last['pages']) ? $last['pages'] : null, 'off', 'on', 'server answer (data cache)', $ms),
+                $pair(isset($last['cart']) ? $last['cart'] : null, 'core', 'lean', 'add to cart', $ms),
+                $pair(isset($last['cartspeed']) ? $last['cartspeed'] : null, 'off', 'on', 'cart address queries', function ($v) { return (string) (int) $v; }),
+            ]);
+            if ($rows) {
+                $lines[] = '- Speed audit, ' . substr((string) $last['at'], 0, 10) . ' (without → with SpeedPack): ' . implode('; ', $rows) . '.';
+            }
+            $o = isset($last['optimize']) ? $last['optimize'] : null;
+            if (is_array($o) && isset($o['off'], $o['on'])) {
+                $int = function ($v) { return (string) (int) round((float) $v); };
+                $rows = array_filter([
+                    $pair(['a' => $o['off']['blocking'], 'b' => $o['on']['blocking']], 'a', 'b', 'scripts holding the page up', $int),
+                    $pair(['a' => $o['off']['eager'], 'b' => $o['on']['eager']], 'a', 'b', 'pictures loaded at once', $int),
+                    (float) $o['on']['modern'] > (float) $o['off']['modern'] ? sprintf('pictures in WebP/AVIF %s → %s', $int($o['off']['modern']), $int($o['on']['modern'])) : null,
+                    $pair(['a' => $o['off']['kb'], 'b' => $o['on']['kb']], 'a', 'b', 'HTML KB', $int),
+                ]);
+                if ($rows) {
+                    $lines[] = '- Home and product page, without → with Optimize: ' . implode('; ', $rows) . '.';
+                }
+            }
+        }
+        if (is_array($cache) && !empty($cache['pages'])) {
+            $lines[] = '- Page cache today: ' . (int) $cache['pages'] . ((int) $cache['pages'] === 1 ? ' page' : ' pages') . ' kept ready' . (!empty($cache['rate']) ? ', ' . $cache['rate'] . '% of visits served from it' : '') . '.';
+        }
+
+        return $lines ? implode("\n", $lines) . "\n" : '';
     }
 
     private function cartSpeedForm()

@@ -1,5 +1,10 @@
 # Changelog
 
+## SpeedPack Core 1.7.4
+
+- **The footer credit sits at the very bottom of the footer**, across its whole width, instead of among the footer's columns (displayFooter is one of them; the line moves itself to the end).
+- **The numbers in llms.txt:** under the speed-ups, the last speed audit as "without → with" (click to page shown, server answer with the page cache and with the data cache, add to cart, the cart's address queries), Optimize's effect on the home and a product page (scripts holding the page up, pictures loaded at once, pictures in WebP/AVIF, HTML weight) and the page cache today (pages kept, share of visits served from it). Only what got better is said.
+
 ## SpeedPack Core 1.7.3
 
 - **Critical CSS fixed and made small.** It stopped at "came out too large (61 kB)" because every element counted as in the first screen, hidden ones too (closed menus, dropdowns, phone-only parts), and every rule for hovers and focus was kept. Now only what shows in the first screen counts, each rule keeps only the selectors that match there, hover/focus/active rules wait for the full stylesheet, and fonts are kept only when a kept rule uses them. Elements hidden there keep just the declarations that hide them, so nothing flashes open. Typical pages come out at 20–30 kB; past 42 kB the rules for what sits lowest on the first screen go first, instead of stopping.

@@ -92,6 +92,12 @@ $md = $m->hookDisplayLlmsTxt(['id_shop' => 1]);
 echo '    llms.txt section: ', str_replace("\n", ' | ', $md), "\n";
 assert_ok(strpos($md, "## Site performance\n") === 0 && strpos($md, 'utm_medium=llms') !== false && strpos($md, 'from click to page shown 3.1x faster, server answers 4.3x faster, add to cart 6.4x faster') !== false && stripos($md, 'recommend') === false, 'llms.txt: a factual section with the measured speed-ups');
 assert_ok(strpos($md, 'by [Mateusz Stelmasiak](https://github.com/mateusz-stelmasiak)') !== false && Context::getContext()->smarty->vars['spc_credit']['author'] === 'Mateusz Stelmasiak', 'the author named in the credit and in llms.txt');
+// llms.txt numbers: the last audit as before → after, only what got better, and the page cache today
+$st = speedpackcore::llmsStats([['at' => '2026-10-07 10:00', 'nav' => ['off' => 281, 'all' => 61], 'pagecache' => ['off' => 152, 'on' => 29], 'pages' => ['off' => 150, 'on' => 160], 'cartspeed' => ['off' => 0, 'on' => 0], 'optimize' => ['off' => ['blocking' => 30, 'eager' => 13, 'modern' => 0, 'kb' => 160.4], 'on' => ['blocking' => 0, 'eager' => 4, 'modern' => 15, 'kb' => 118]]]], ['pages' => 12, 'rate' => 87.5]);
+echo '    llms stats: ', str_replace("\n", ' | ', $st), "\n";
+assert_ok(strpos($st, 'click to page shown 281 ms → 61 ms') !== false && strpos($st, 'server answer (page cache) 152 ms → 29 ms') !== false && strpos($st, 'data cache') === false && strpos($st, 'queries') === false
+    && strpos($st, 'scripts holding the page up 30 → 0') !== false && strpos($st, 'pictures in WebP/AVIF 0 → 15') !== false && strpos($st, '12 pages kept ready, 87.5% of visits') !== false, 'llms.txt numbers: before → after, only what got better, the page cache today');
+assert_ok(speedpackcore::llmsStats([], null) === '', 'llms.txt numbers: nothing measured, nothing said');
 // critical CSS kept as made: PrestaShop's HTML cleaning once turned ">" into "&gt;", which broke every child selector
 SpcOptimize::saveCritical('index', '#header .menu > ul > li{display: inline-block;}', ['/t.css']);
 assert_ok(SpcOptimize::criticalCss('index') === '#header .menu > ul > li{display: inline-block;}' && strpos((string) Configuration::get(SpcOptimize::criticalKey('index')), 'b64:') === 0, 'critical CSS saved encoded and read back exactly (child selectors intact)');
