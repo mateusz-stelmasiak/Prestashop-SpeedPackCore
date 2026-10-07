@@ -28,8 +28,8 @@ SP = {'enabled': True, 'hoverDelay': 65, 'maxTotal': 12, 'maxWarmup': 0, 'warmup
 NAV = {'enabled': True, 'links': '#header a[data-depth="0"]', 'region': '#wrapper', 'prefetch': True, 'hoverDelay': 60, 'skeleton': True, 'skeletonDelay': 140, 'bar': False,
        'transition': 'off', 'transitionMs': 0, 'ttl': 60, 'debug': False, 'shapes': [], 'denyPrefixes': []}
 PLAN = {'pages': [{'name': n, 'url': '/x'} for n in ['Home page', 'Dieta', 'Kimchi', 'Zakwas', 'Pierogi']], 'home': '/pl/', 'product': 7, 'cache': 'redis',
-        'links': '#header a[data-depth="0"]', 'enabled': {'cache': True, 'smartprefetch': True, 'instantnav': True, 'instantcart': True, 'cartspeed': True},
-        'tokens': {k: k for k in ['off', 'all', 'nav_off', 'nav_smartprefetch', 'nav_instantnav']}, 'cookie': 'spc_audit', 'expires': 900}
+        'links': '#header a[data-depth="0"]', 'enabled': {'cache': True, 'smartprefetch': True, 'instantnav': True, 'instantcart': True, 'cartspeed': True, 'pagecache': True, 'optimize': True},
+        'tokens': {k: k for k in ['off', 'all', 'data', 'opt_off', 'opt_on', 'nav_off', 'nav_smartprefetch', 'nav_instantnav']}, 'cookie': 'spc_audit', 'expires': 900}
 
 # start pages leave a service worker, a Cache Storage entry and session storage behind, after
 # reporting what they found: the audit must clear them before the next click
@@ -211,7 +211,11 @@ class H(http.server.BaseHTTPRequestHandler):
         if step == 'plan':
             ans = PLAN
         elif step == 'page':
-            ans = {'off': 410, 'on': 95, 'verified': True}
+            # the page cache answers four of the five pages (one page type it does not keep)
+            ans = {'off': 410, 'on': 95, 'full': None if fields.get('i') == '4' else 12, 'hit': fields.get('i') != '4', 'verified': True}
+        elif step == 'optimize':
+            ans = {'off': {'blocking': 30, 'eager': 13, 'modern': 0, 'images': 17, 'kb': 160, 'ms': 300},
+                   'on': {'blocking': 0, 'eager': 4, 'modern': 15, 'images': 17, 'kb': 118, 'ms': 240}}
         elif step == 'cart':
             ans = {'core': 388, 'lean': 61}
         elif step == 'cartspeed':

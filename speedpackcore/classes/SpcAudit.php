@@ -8,7 +8,10 @@
  * can do is switch speed-ups off for the request that carries it.
  *
  * What is measured, each in a few seconds:
- *   pages      - the server's answer time for five of the shop's own pages (the data cache)
+ *   pages      - the server's answer time for five of the shop's own pages: without SpeedPack,
+ *                with the data cache, and with the page cache answering
+ *   optimize   - the home page and a product page as the browser gets them, without Optimize and
+ *                with it: scripts that hold the page up, pictures loaded at once, WebP/AVIF, weight
  *   cart       - adding to the cart: PrestaShop's cart controller against the lean endpoint
  *   cartspeed  - the cart's address lookups, counted and timed inside PHP
  * The navigation test (SmartPrefetch, InstantNav) runs in the admin's own browser, see
@@ -32,9 +35,11 @@ class SpcAudit
     public const LIFETIME = 900;
     public const KEEP = 12;
     public const TIMEOUT = 15;
+    /** what a browser asks for when it opens a page (the page cache keeps only such answers) */
+    public const BROWSER = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
 
     /** Every part the audit can switch off. */
-    public const PARTS = ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed'];
+    public const PARTS = ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed', 'pagecache', 'optimize'];
 
     /** @var bool whether apply() has run for this request */
     protected static $applied = false;
@@ -135,6 +140,14 @@ class SpcAudit
         return $parts;
     }
 
+    /** Whether this is an audit request with every part on: it may be answered like any visitor. */
+    public static function full()
+    {
+        $parts = self::parts();
+
+        return $parts !== null && !array_diff(self::PARTS, $parts);
+    }
+
     /** Whether the audit has switched this part off for the current request. */
     public static function off($part)
     {
@@ -182,7 +195,9 @@ class SpcAudit
             return $value === false || $value === '' || (bool) $value;
         };
         // the navigation test keeps the server side as it is, so only the browser side differs
-        $server = ['cache', 'cartspeed', 'instantcart'];
+        $server = ['cache', 'cartspeed', 'instantcart', 'optimize'];
+        // the server measured without the page cache and Optimize: the data cache alone
+        $data = array_values(array_diff(self::PARTS, ['pagecache', 'optimize']));
         $links = (string) Configuration::get('SPC_NAV_LINKS');
 
         return [
@@ -197,10 +212,15 @@ class SpcAudit
                 'instantnav' => $on('SPC_NAV_ENABLED'),
                 'instantcart' => $on('SPC_IC_ENABLED'),
                 'cartspeed' => (bool) Configuration::get('SPC_CS_ENABLED'),
+                'pagecache' => SpcPageCache::enabled(),
+                'optimize' => SpcOptimize::enabled(),
             ],
             'tokens' => [
                 'off' => self::token([]),
                 'all' => self::token(self::PARTS),
+                'data' => self::token($data),
+                'opt_off' => self::token(array_values(array_diff(self::PARTS, ['pagecache', 'optimize']))),
+                'opt_on' => self::token(array_values(array_diff(self::PARTS, ['pagecache']))),
                 'nav_off' => self::token($server),
                 'nav_smartprefetch' => self::token(array_merge($server, ['smartprefetch'])),
                 'nav_instantnav' => self::token(array_merge($server, ['instantnav'])),
@@ -213,6 +233,9 @@ class SpcAudit
     /** Best sellers first; with $buyable, only ones a list may add without a choice. */
     protected static function products($idShop, $idLang, $limit, $buyable)
     {
+        // in stock, or orderable without it (the product's own choice, or the shop's default: 2)
+        $stock = !(int) Configuration::get('PS_STOCK_MANAGEMENT') ? '1'
+            : 'IFNULL(sa.quantity, 0) > 0 OR sa.out_of_stock = 1' . ((int) Configuration::get('PS_ORDER_OUT_OF_STOCK') ? ' OR sa.out_of_stock = 2' : '');
         $rows = Db::getInstance()->executeS(
             'SELECT p.id_product, pl.name FROM `' . _DB_PREFIX_ . 'product` p
             INNER JOIN `' . _DB_PREFIX_ . 'product_shop` ps ON (ps.id_product = p.id_product AND ps.id_shop = ' . (int) $idShop . ')
@@ -220,7 +243,7 @@ class SpcAudit
             LEFT JOIN `' . _DB_PREFIX_ . 'product_sale` sale ON (sale.id_product = p.id_product)
             ' . ($buyable ? 'LEFT JOIN `' . _DB_PREFIX_ . 'stock_available` sa ON (sa.id_product = p.id_product AND sa.id_product_attribute = 0 AND sa.id_shop = ' . (int) $idShop . ')' : '') . '
             WHERE ps.active = 1 AND ps.visibility IN (\'both\', \'catalog\')
-            ' . ($buyable ? 'AND ps.available_for_order = 1 AND ps.cache_default_attribute = 0 AND p.customizable = 0 AND (IFNULL(sa.quantity, 0) > 0 OR ps.out_of_stock = 1)' : '') . '
+            ' . ($buyable ? 'AND ps.available_for_order = 1 AND ps.cache_default_attribute = 0 AND p.customizable = 0 AND (' . $stock . ')' : '') . '
             ORDER BY IFNULL(sale.quantity, 0) DESC, p.date_add DESC LIMIT ' . (int) $limit
         );
 
@@ -232,35 +255,120 @@ class SpcAudit
      * ------------------------------------------------------------------ */
 
     /**
-     * One page, with SpeedPack off and on, alternating so a busy moment on the server does not
-     * land on one side only. A first request warms PHP and the database for both.
+     * One page, without SpeedPack, with the data cache and (when it is on) with the page cache
+     * answering, taken in turn so a busy moment on the server does not land on one side only.
+     * A first request warms PHP and the database; a second one, as an ordinary visitor, lets the
+     * page cache keep the page.
      *
-     * @return array ['off' => ms, 'on' => ms] (median server answer time) or ['error' => text]
+     * @return array ['off' => ms, 'on' => ms, 'full' => ms|null, 'hit' => bool] (median server
+     *               answer time) or ['error' => text]
      */
-    public static function page($url, array $tokens)
+    public static function page($url, array $tokens, $pageCache = false)
     {
-        $want = ['off' => self::label([]), 'on' => self::label(self::PARTS)];
-        // a first request warms PHP, the database and the data cache for both sides
-        $first = self::request(self::bust($url), $tokens['all']);
+        $want = ['off' => self::label([]), 'on' => self::label(array_diff(self::PARTS, ['pagecache', 'optimize'])), 'full' => self::label(self::PARTS)];
+        $token = ['off' => $tokens['off'], 'on' => $tokens['data'], 'full' => $tokens['all']];
+        $sides = $pageCache ? ['off', 'on', 'full'] : ['off', 'on'];
+        $jar = [];
+        $first = self::request(self::bust($url), $tokens['data'], $jar, null, self::BROWSER);
         if (!$first['ok']) {
             return ['error' => $first['error']];
         }
-        $times = ['off' => [], 'on' => []];
+        if ($pageCache) {
+            // no audit cookie: the page cache keeps the page as it keeps it for any visitor
+            $jar = [];
+            self::request(self::bust($url), null, $jar, null, self::BROWSER);
+        }
+        $times = array_fill_keys($sides, []);
+        $hits = 0;
         for ($i = 0; $i < 3; ++$i) {
-            // alternating, and the order turns each round, so a busy moment lands on both sides
-            foreach ($i % 2 ? ['on', 'off'] : ['off', 'on'] as $side) {
-                $r = self::request(self::bust($url), $tokens[$side === 'off' ? 'off' : 'all']);
+            // the order turns each round, so a busy moment lands on every side
+            $order = $sides;
+            for ($k = 0; $k < $i; ++$k) {
+                $order[] = array_shift($order);
+            }
+            foreach ($order as $side) {
+                $jar = [];
+                $r = self::request(self::bust($url), $token[$side], $jar, null, self::BROWSER);
                 if (!$r['ok']) {
                     return ['error' => $r['error']];
                 }
                 if ($r['audit'] !== $want[$side]) {
                     return ['error' => 'page_cache', 'code' => 'page_cache'];
                 }
+                if ($side === 'full' && $r['cache'] === 'HIT') {
+                    ++$hits;
+                }
                 $times[$side][] = $r['ttfb'];
             }
         }
+        $out = ['off' => self::median($times['off']), 'on' => self::median($times['on']), 'full' => null, 'hit' => false, 'verified' => true];
+        if ($pageCache) {
+            // a page the cache does not keep (a page type left out, a notice on it) is built
+            // every time: then it shows no page cache figure rather than a made-up one
+            $out['hit'] = $hits === 3;
+            $out['full'] = $out['hit'] ? self::median($times['full']) : null;
+        }
 
-        return ['off' => self::median($times['off']), 'on' => self::median($times['on']), 'verified' => true];
+        return $out;
+    }
+
+    /**
+     * The home page and a product page as a browser that takes WebP/AVIF gets them, without
+     * Optimize and with it: the scripts that hold the page up, the pictures loaded at once, the
+     * pictures in WebP or AVIF and the weight of the HTML.
+     *
+     * @return array ['off' => counts, 'on' => counts] or ['error' => text]
+     */
+    public static function optimize(array $urls, array $tokens)
+    {
+        $out = [];
+        foreach (['off' => 'opt_off', 'on' => 'opt_on'] as $side => $token) {
+            $sum = ['blocking' => 0, 'eager' => 0, 'modern' => 0, 'images' => 0, 'kb' => 0, 'ms' => 0];
+            foreach ($urls as $url) {
+                $jar = [];
+                $r = self::request(self::bust($url), $tokens[$token], $jar, null, 'text/html,image/avif,image/webp,*/*;q=0.8');
+                if (!$r['ok']) {
+                    return ['error' => $r['error']];
+                }
+                $c = self::weigh($r['body']);
+                foreach ($c as $k => $v) {
+                    $sum[$k] += $v;
+                }
+                $sum['ms'] += $r['total'];
+            }
+            $sum['kb'] = round($sum['kb'], 1);
+            $out[$side] = $sum;
+        }
+
+        return $out;
+    }
+
+    /** What in a page holds the browser up: counted from its HTML. */
+    public static function weigh($html)
+    {
+        $blocking = 0;
+        if (preg_match_all('/<script\b[^>]*>/i', $html, $m)) {
+            foreach ($m[0] as $tag) {
+                $type = preg_match('/\btype\s*=\s*["\']?([^"\'\s>]+)/i', $tag, $t) ? strtolower($t[1]) : 'text/javascript';
+                if (preg_match('/\bsrc\s*=/i', $tag) && !preg_match('/\b(defer|async)\b/i', $tag) && in_array($type, ['text/javascript', 'application/javascript'], true)) {
+                    ++$blocking;
+                }
+            }
+        }
+        $images = $eager = $modern = 0;
+        if (preg_match_all('/<img\b[^>]*>/i', $html, $m)) {
+            foreach ($m[0] as $tag) {
+                ++$images;
+                if (!preg_match('/\bloading\s*=\s*["\']?lazy/i', $tag)) {
+                    ++$eager;
+                }
+                if (preg_match('/\.(webp|avif)\b/i', $tag)) {
+                    ++$modern;
+                }
+            }
+        }
+
+        return ['blocking' => $blocking, 'eager' => $eager, 'modern' => $modern, 'images' => $images, 'kb' => strlen($html) / 1024];
     }
 
     /**
@@ -361,17 +469,19 @@ class SpcAudit
      * One request to the shop as a first-time visitor would make it, with the audit cookie.
      * $jar keeps the visitor's cookies between requests; $post makes it a form POST.
      */
-    public static function request($url, $token, array &$jar = [], ?array $post = null)
+    public static function request($url, $token, array &$jar = [], ?array $post = null, $accept = null)
     {
         if (!function_exists('curl_init')) {
             return ['ok' => false, 'error' => 'the server has no cURL'];
         }
-        $cookies = [self::COOKIE . '=' . $token];
+        // no token: an ordinary first-time visitor
+        $cookies = $token === null ? [] : [self::COOKIE . '=' . $token];
         foreach ($jar as $name => $value) {
             $cookies[] = $name . '=' . $value;
         }
         $headers = [];
         $audit = null;
+        $cache = null;
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -380,13 +490,16 @@ class SpcAudit
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_ENCODING => '',
             CURLOPT_USERAGENT => 'SpeedPackCore/1.4 (+speed audit)',
-            CURLOPT_HTTPHEADER => ['Accept: text/html,application/json;q=0.9', 'Cookie: ' . implode('; ', $cookies)],
-            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers, &$audit) {
+            CURLOPT_HTTPHEADER => array_merge(['Accept: ' . ($accept ?: 'text/html,application/json;q=0.9')], $cookies ? ['Cookie: ' . implode('; ', $cookies)] : []),
+            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers, &$audit, &$cache) {
                 if (stripos($line, 'Set-Cookie:') === 0 && preg_match('/^Set-Cookie:\s*([^=;\s]+)=([^;]*)/i', $line, $m)) {
                     $headers[$m[1]] = $m[2];
                 }
                 if (stripos($line, self::HEADER . ':') === 0) {
                     $audit = trim(substr($line, strlen(self::HEADER) + 1));
+                }
+                if (stripos($line, 'X-SpeedPack-Cache:') === 0) {
+                    $cache = trim(substr($line, 18));
                 }
 
                 return strlen($line);
@@ -409,7 +522,7 @@ class SpcAudit
             return ['ok' => false, 'error' => $body === false ? $error : 'HTTP ' . $code];
         }
 
-        return ['ok' => true, 'ttfb' => round($ttfb), 'total' => round($total), 'body' => (string) $body, 'audit' => $audit];
+        return ['ok' => true, 'ttfb' => round($ttfb), 'total' => round($total), 'body' => (string) $body, 'audit' => $audit, 'cache' => $cache];
     }
 
     protected static function median(array $values)
@@ -452,12 +565,21 @@ class SpcAudit
             'at' => date('Y-m-d H:i'),
             'cache' => preg_replace('/[^a-z]/', '', (string) (isset($raw['cache']) ? $raw['cache'] : '')),
             'pages' => $pair(isset($raw['pages']) ? $raw['pages'] : null, 'off', 'on'),
+            'pagecache' => $pair(isset($raw['pagecache']) ? $raw['pagecache'] : null, 'off', 'on'),
+            'optimize' => null,
             'cart' => $pair(isset($raw['cart']) ? $raw['cart'] : null, 'core', 'lean'),
             'cartspeed' => $pair(isset($raw['cartspeed']) ? $raw['cartspeed'] : null, 'off', 'on'),
             'nav' => [],
         ];
         foreach (['off', 'smartprefetch', 'instantnav', 'all'] as $mode) {
             $run['nav'][$mode] = isset($raw['nav'][$mode]) ? $n($raw['nav'][$mode]) : null;
+        }
+        if (isset($raw['optimize']['off'], $raw['optimize']['on']) && is_array($raw['optimize']['off']) && is_array($raw['optimize']['on'])) {
+            foreach (['off', 'on'] as $side) {
+                foreach (['blocking', 'eager', 'modern', 'images', 'kb', 'ms'] as $k) {
+                    $run['optimize'][$side][$k] = isset($raw['optimize'][$side][$k]) ? $n($raw['optimize'][$side][$k]) : null;
+                }
+            }
         }
         $list = self::history();
         if ($replace && $list) {

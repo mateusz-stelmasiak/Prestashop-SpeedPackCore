@@ -9,7 +9,8 @@
  * the country, phone or computer, and which image formats the browser takes (when Optimize serves
  * WebP or AVIF). Campaign tags (utm_*, gclid, fbclid...) are left out of the key.
  *
- * Requests of the speed audit never use it (they measure the shop itself).
+ * Requests of the speed audit are never kept; they are answered from it only when they ask for
+ * every part on (how the audit measures the page cache).
  *
  * Served at actionDispatcherBefore, before PrestaShop builds the page; stored at
  * actionOutputHTMLBefore, from the page PrestaShop has just built. Kept gzipped in
@@ -244,7 +245,8 @@ class SpcPageCache extends SpcFeature
      */
     public static function serve($controller, $context, $now = null)
     {
-        if (!self::enabled() || SpcAudit::parts() !== null || !(int) Configuration::get('PS_SHOP_ENABLE')) {
+        // the speed audit uses kept pages only when it asks for everything on (SpcAudit::full)
+        if (!self::enabled() || (SpcAudit::parts() !== null && !SpcAudit::full()) || !(int) Configuration::get('PS_SHOP_ENABLE')) {
             return false;
         }
         $hash = self::key($controller, self::request($context));

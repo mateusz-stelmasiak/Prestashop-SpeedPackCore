@@ -6,7 +6,10 @@
  * X-SpeedPack-Audit header goes out. Pages answer in 40 ms with the data cache, 220 ms without.
  *
  * The test writes the shared state to the system temp folder: the audit key, and "pagecache"
- * to make this shop behave like one behind a page cache (the same stored answer, no header).
+ * to make this shop behave like one behind a page cache (the same stored answer, no header), and
+ * "own" for SpeedPack's own page cache: a page an ordinary visitor opened is kept, and answered in
+ * 5 ms to visitors and to audit requests with every part on (as SpcPageCache::serve does).
+ * Optimize: with it the page's script is deferred and its picture lazy, without it neither.
  */
 define('_PS_VERSION_', '9.0.0');
 define('_DB_PREFIX_', 'ps_');
@@ -40,6 +43,14 @@ if ($state['pagecache'] && $_SERVER['REQUEST_METHOD'] === 'GET' && strpos($path,
 $parts = SpcAudit::apply();
 $label = $parts === null ? 'visitor' : SpcAudit::label($parts);
 $cache = Db::getInstance()->cache && Db::getInstance(false)->cache;
+$kept = sys_get_temp_dir() . '/spc-audit-shop-kept-' . md5($path);
+if (!empty($state['own']) && $_SERVER['REQUEST_METHOD'] === 'GET' && ($parts === null || SpcAudit::full()) && is_file($kept)) {
+    $log('audit=' . $label . ' HIT');
+    header('X-SpeedPack-Cache: HIT');
+    usleep(5000);
+    readfile($kept);
+    exit;
+}
 $log('audit=' . $label . ' cache=' . ($cache ? 'on' : 'off'));
 
 if (strpos($path, '/module/speedpackcore/add') === 0) {
@@ -52,4 +63,14 @@ if (strpos($path, '/module/speedpackcore/remove') === 0) { echo '{"ok":true}'; e
 if ($path === '/pl/cart') { usleep(160000); echo '{"success":true}'; exit; }
 setcookie('PrestaShop-abc', 'visitor1', 0, '/');
 usleep($cache ? 40000 : 220000);
-echo '<html><script>var prestashop = {"static_token":"' . str_repeat('ab', 16) . '"};</script><body>' . htmlspecialchars($path) . '</body></html>';
+$opt = $parts === null || in_array('optimize', $parts, true);
+$html = '<html><script>var prestashop = {"static_token":"' . str_repeat('ab', 16) . '"};</script>'
+    . ($opt ? '<script defer src="/t.js"></script>' : '<script src="/t.js"></script><script type="text/javascript" src="/u.js"></script>')
+    . '<body>' . htmlspecialchars($path)
+    . ($opt && strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'image/webp') !== false ? '<img src="/a.webp" loading="lazy">' : '<img src="/a.jpg">')
+    . '</body></html>';
+// SpeedPack's page cache keeps what an ordinary visitor (a browser) got
+if (!empty($state['own']) && $parts === null && strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'text/html,application/xhtml') === 0) {
+    file_put_contents($kept, $html);
+}
+echo $html;

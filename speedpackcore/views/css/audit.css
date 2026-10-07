@@ -52,6 +52,7 @@
 .spc-card.is-skipped { opacity: .6; }
 .spc-gain { font-size: 18px; font-weight: 700; color: var(--spc-good); margin: 8px 0 0; min-height: 1px; }
 .spc-gain.is-flat { color: var(--spc-mute); font-weight: 600; font-size: 14px; }
+.spc-gain.is-worse { color: #b4561f; font-weight: 600; font-size: 14px; }
 .spc-note { color: var(--spc-mute); font-size: 12px; margin: 4px 0 0; }
 .spc-note:empty, .spc-gain:empty { display: none; }
 
@@ -75,6 +76,9 @@
 .spc-card.is-running .spc-ic-cache .spc-l2 { animation-delay: .15s; }
 .spc-card.is-running .spc-ic-cache .spc-l3 { animation-delay: .3s; }
 .spc-card.is-running .spc-ic-cache .spc-l4 { animation-delay: .45s; }
+.spc-card.is-running .spc-ic-pages .spc-l, .spc-card.is-running .spc-ic-opt .spc-l { animation: spc-layer 1.2s ease-in-out infinite; }
+.spc-card.is-running .spc-ic-pages .spc-l2, .spc-card.is-running .spc-ic-opt .spc-l2 { animation-delay: .15s; }
+.spc-card.is-running .spc-ic-pages .spc-l3, .spc-card.is-running .spc-ic-opt .spc-l3 { animation-delay: .3s; }
 
 /* SmartPrefetch: a radar sweep finds the next page */
 .spc-ic-radar .spc-cone { fill: currentColor; stroke: none; opacity: .18; }

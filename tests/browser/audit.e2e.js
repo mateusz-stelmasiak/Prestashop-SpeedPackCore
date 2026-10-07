@@ -68,6 +68,16 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
     ok(['off', 'smartprefetch', 'instantnav', 'all'].every((m) => typeof nav[m] === 'number'), 'every mode measured and saved');
     ok(nav.off > nav.instantnav && nav.off > nav.smartprefetch, 'the speed-ups are faster than no speed-ups');
     ok(!notes.some((n) => /page cache/.test(n)), 'no page-cache warning');
+    const card = (part) => p.$eval('[data-spc-part="' + part + '"]', (c) => ({ bars: c.querySelector('[data-spc-bars]').innerText.replace(/\s+/g, ' '), gain: c.querySelector('[data-spc-gain]').textContent, note: c.querySelector('[data-spc-note]').textContent }));
+    await p.waitForTimeout(1200); // the figures count up
+    const pc = await card('pagecache'), opt = await card('optimize');
+    console.log('    page cache', JSON.stringify(pc), 'optimize', JSON.stringify(opt));
+    ok(saved[0].pagecache && saved[0].pagecache.off === 410 && saved[0].pagecache.on === 12 && /410 ms.*12 ms/.test(pc.bars) && /34x faster/.test(pc.gain),
+      'page cache: without and with, over the pages it answered, saved and shown (' + pc.gain + ')');
+    ok(saved[0].optimize && saved[0].optimize.off.blocking === 30 && saved[0].optimize.on.eager === 4 && /43 files.*4 files/.test(opt.bars) && /39 fewer files/.test(opt.gain) && /30 to 0/.test(opt.note),
+      'Optimize: what holds the page up, without and with, saved and shown');
+    const g = await p.$$eval('[data-spc-gain].is-worse', (l) => l.length);
+    ok(g === 0, 'no part shown as slower');
   } else {
     ok(!['off', 'smartprefetch', 'instantnav', 'all'].some((m) => typeof nav[m] === 'number'), 'nothing counted when the shop ignored the configuration');
     ok(notes.filter((n) => /page cache/.test(n)).length === 2, 'the page-cache warning on both click cards');

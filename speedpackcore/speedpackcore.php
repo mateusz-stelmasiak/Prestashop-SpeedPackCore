@@ -95,7 +95,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.7.0';
+        $this->version = '1.7.1';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -664,8 +664,16 @@ class SpeedPackCore extends Module
             case 'page':
                 $i = (int) Tools::getValue('i');
                 $answer = isset($plan['pages'][$i])
-                    ? SpcAudit::page($plan['pages'][$i]['url'], $plan['tokens'])
+                    ? SpcAudit::page($plan['pages'][$i]['url'], $plan['tokens'], $plan['enabled']['pagecache'])
                     : ['error' => 'no such page'];
+                break;
+            case 'optimize':
+                // the home page and a product page (the plan lists the products last)
+                $urls = [$plan['pages'][0]['url']];
+                if (count($plan['pages']) > 1) {
+                    $urls[] = $plan['pages'][count($plan['pages']) - 1]['url'];
+                }
+                $answer = SpcAudit::optimize($urls, $plan['tokens']);
                 break;
             case 'cart':
                 $answer = SpcAudit::cart($this->context, $plan['product'], $plan['tokens']['all']);
@@ -712,6 +720,7 @@ class SpeedPackCore extends Module
             'queries' => $this->l('%s queries'),
             'query' => $this->l('%s query'),
             'same' => $this->l('About the same'),
+            'slower' => $this->l('%sx slower'),
             'failed' => $this->l('Could not measure: %s'),
             'noCache' => $this->l('No data cache is chosen yet: pick Redis, APCu or Memcached in the Cache section.'),
             'pageCache' => $this->l('A page cache in front of the shop (a cache module, LiteSpeed, a CDN) answered instead of PrestaShop, so those pages could not be measured with and without SpeedPack. Let requests with the spc_audit cookie through it, or switch it off for the audit.'),
@@ -728,6 +737,13 @@ class SpeedPackCore extends Module
             'autoNote' => $this->l('SpeedPack Core was just installed or updated, so it is measuring this shop now.'),
             'clicksLater' => $this->l('The click test needs a shop window, which the browser opens only on a click: press "Measure the clicks too".'),
             'clicksNow' => $this->l('Measure the clicks too'),
+            'optimizeStep' => $this->l('Optimize: the home page and a product page'),
+            'pcMiss' => $this->l('The page cache did not answer these pages (a page type it does not keep, or a notice on the page), so there is nothing to compare yet.'),
+            'files' => $this->l('%s files'),
+            'file' => $this->l('%s file'),
+            'fewerFiles' => $this->l('%s fewer files hold the page up'),
+            'optNote' => $this->l('Scripts holding the page up: %1$s to %2$s. Pictures loaded at once: %3$s to %4$s. In WebP or AVIF: %5$s to %6$s. HTML: %7$s to %8$s KB.'),
+            'optNoWebp' => $this->l('No picture is in WebP or AVIF yet: convert them in Optimize, Pictures.'),
             'prerenderNote' => $this->l('A quick 0.3 s hover. On a longer hover, Chrome and Edge also build the whole page in advance, so it shows almost at once; a test window cannot show that part.'),
         ];
 
@@ -782,6 +798,7 @@ class SpeedPackCore extends Module
             'at' => $last['at'],
             'clicks' => $gain(isset($last['nav']) ? $last['nav'] : null, 'off', 'all'),
             'pages' => $gain(isset($last['pages']) ? $last['pages'] : null, 'off', 'on'),
+            'pagecache' => $gain(isset($last['pagecache']) ? $last['pagecache'] : null, 'off', 'on'),
             'cart' => $gain(isset($last['cart']) ? $last['cart'] : null, 'core', 'lean'),
         ] : null;
     }

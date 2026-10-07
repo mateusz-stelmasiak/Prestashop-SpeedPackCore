@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.7.0.zip"><img alt="Download 1.7.0" src="https://img.shields.io/badge/download-speedpackcore--1.7.0.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.7.1.zip"><img alt="Download 1.7.1" src="https://img.shields.io/badge/download-speedpackcore--1.7.1.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.7.0" src="https://img.shields.io/badge/version-1.7.0-17201e">
+  <img alt="Version 1.7.1" src="https://img.shields.io/badge/version-1.7.1-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -55,6 +55,8 @@
 
 - One button on the settings page, offered right after install: **each part measured without SpeedPack and with it**, on your shop and your server, in about a minute
 - **Data cache:** server answer time of five of your pages (home, two busiest categories, two best sellers)
+- **Page cache:** the same pages answered from the page cache against built without SpeedPack (a page it does not keep shows no figure rather than a made-up one)
+- **Optimize:** the home page and a product page without Optimize and with it: the scripts that hold the page up, the pictures loaded at once, the pictures in WebP or AVIF and the weight of the HTML
 - **SmartPrefetch and InstantNav:** a shop window opens and clicks through your menu, timing click to page shown with no speed-ups, with each part and with everything
 - **InstantCart:** adding to the cart through PrestaShop's cart page against the lean endpoint
 - **CartSpeed:** database queries for the address lookups of a cart page
@@ -82,7 +84,7 @@ Visitors who are not signed in and have nothing in their cart get catalogue page
 - **One page per variant:** the shop and address, language, currency, country, phone or computer, and the picture format the browser takes are part of the key; campaign tags (`utm_*`, `gclid`, `fbclid`…) are not, so an ad click gets the ready page
 - **Cleared when things change:** a product, its stock or its price clears its page, its categories, its brand, the home page and the listings; a category, a CMS page, a brand, a supplier, a price rule, PrestaShop's "Clear cache" and a module install clear everything. Pages also expire after the time you set (12 hours by default)
 - **Kept gzipped** in `var/cache`, sent as they are to browsers that take gzip. Each answer says what happened in an `X-SpeedPack-Cache` header (`HIT`, `MISS`, or `BYPASS` with the reason); hits and the pages kept are on the settings page
-- The speed audit's own requests never use it, so the audit keeps measuring the shop itself
+- The speed audit's own requests are never kept; they get a kept page only when they ask for every part on, which is how the audit measures the page cache against the shop built without SpeedPack
 
 ### Optimize – lighter pages · *new in 1.7*
 
@@ -251,11 +253,11 @@ Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fas
 
 #### Measure your own shop
 
-Shops differ: the theme, the modules and the server decide the real numbers. The **speed audit** on the settings page runs the same kind of test on your shop in about a minute: server answer time of five of your pages with and without the data cache, click to page shown through your menu with no speed-ups, SmartPrefetch, InstantNav and everything, add to cart through PrestaShop's cart page against InstantCart, and CartSpeed's query count. Results are kept, so a chart shows the effect of later changes. The audit times a quick 0.3 s hover; a longer hover is faster still in Chrome and Edge (prerender, see above), which a test window opened from the back office cannot show.
+Shops differ: the theme, the modules and the server decide the real numbers. The **speed audit** on the settings page runs the same kind of test on your shop in about a minute: server answer time of five of your pages without SpeedPack, with the data cache and from the page cache, what holds the home page and a product page up with and without Optimize, click to page shown through your menu with no speed-ups, SmartPrefetch, InstantNav and everything, add to cart through PrestaShop's cart page against InstantCart, and CartSpeed's query count. Results are kept, so a chart shows the effect of later changes. The audit times a quick 0.3 s hover; a longer hover is faster still in Chrome and Edge (prerender, see above), which a test window opened from the back office cannot show.
 
 ## Installation
 
-1. Download **[speedpackcore-1.7.0.zip](dist/speedpackcore-1.7.0.zip)**.
+1. Download **[speedpackcore-1.7.1.zip](dist/speedpackcore-1.7.1.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -302,7 +304,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache de pages (1.7) :** les pages du catalogue prêtes pour les visiteurs non connectés et sans panier, en quelques millisecondes ; vidées quand un produit, son stock ou son prix change.
 - **Optimize (1.7) :** images WebP et AVIF, chargement différé des images, CSS critique, scripts différés dans leur ordre, HTML minifié, en-têtes de cache et compression dans `.htaccess`.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.7.0.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.7.1.zip`, puis Configurer.
 </details>
 
 <details>
@@ -320,7 +322,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache stron (1.7):** strony katalogu gotowe dla niezalogowanych gości bez koszyka, w kilka milisekund; czyszczone, gdy zmieni się produkt, jego stan lub cena.
 - **Optimize (1.7):** zdjęcia WebP i AVIF, leniwe ładowanie zdjęć, critical CSS, skrypty odroczone w swojej kolejności, zminifikowany HTML, nagłówki cache i kompresja w `.htaccess`.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.7.0.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.7.1.zip`, potem Konfiguruj.
 </details>
 
 ---

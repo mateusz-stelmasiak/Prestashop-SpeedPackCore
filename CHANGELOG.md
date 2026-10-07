@@ -1,5 +1,12 @@
 # Changelog
 
+## SpeedPack Core 1.7.1
+
+- **The speed audit compares the new parts too.** Page cache: the same five pages answered from it against built without SpeedPack (a page it does not keep shows no figure, not a made-up one). Optimize: the home page and a product page without it and with it, counting the scripts that hold the page up, the pictures loaded at once, the pictures in WebP or AVIF and the HTML's weight. Both saved with the audit; the chart of earlier audits shows the server's best answer.
+- **Fix:** the audit never measured InstantCart: the query choosing a product to add asked for a column PrestaShop does not have, so every shop got "no product can be added from a list". It now follows the product's own out-of-stock choice and the shop's default.
+- **Fix:** InstantNav was timed to the end of its transition, a new page to its first paint, so InstantNav could come out slower than no speed-up. Both are now timed to the frame that shows the new content (InstantNav says `instantnav:swapped` at the swap).
+- A part clearly slower with SpeedPack is now said so ("1.8x slower") instead of "About the same".
+
 ## SpeedPack Core 1.7.0
 
 Two new parts, each off until switched on.

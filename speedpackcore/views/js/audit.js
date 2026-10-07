@@ -10,12 +10,14 @@
  *
  *   1. the click test, in a shop window opened from here: menu clicks after a 0.3 s hover with no
  *      speed-ups, with SmartPrefetch, with InstantNav and with everything, timed from the click to
- *      the first paint of the new page (or to the swap, for InstantNav). A warm-up round first,
- *      then three rounds that take the modes in turn; the shop window is emptied between clicks
- *      and every page is checked to be the configuration it should be (see clickTest);
- *   2. five pages answered by the server without the data cache and with it – every answer must
- *      carry the shop's X-SpeedPack-Audit header naming that configuration, or it came from a
- *      page cache and is not counted;
+ *      the first paint of the new page (or to the frame that paints the swap, for InstantNav).
+ *      A warm-up round first, then three rounds that take the modes in turn; the shop window is
+ *      emptied between clicks and every page is checked to be the configuration it should be
+ *      (see clickTest);
+ *   2. five pages answered by the server without SpeedPack, with the data cache and with the
+ *      page cache answering – every answer must carry the shop's X-SpeedPack-Audit header naming
+ *      that configuration, or it came from a page cache in front of the shop and is not counted;
+ *   2b. the home page and a product page without Optimize and with it (what holds the page up);
  *   3. adding to the cart through PrestaShop's cart page and through the lean endpoint;
  *   4. the address lookups of a cart page, counted with CartSpeed off and on.
  *
@@ -145,20 +147,26 @@
       })(t0);
     }
 
-    /** "2.4x faster" (or "12 fewer queries"), or "about the same" when the gain is within noise. */
-    function gain(part, before, after, queries) {
+    /**
+     * "2.4x faster" (or "12 fewer queries", with fewer = its text), "about the same" when the gain
+     * is within noise, "slower" when it is clearly the other way.
+     */
+    function gain(part, before, after, fewer) {
       var c = card(part);
       if (!c) return;
       var g = c.querySelector('[data-spc-gain]');
-      g.classList.remove('is-flat');
+      g.classList.remove('is-flat', 'is-worse');
       if (typeof before !== 'number' || typeof after !== 'number') { g.textContent = ''; return; }
-      if (queries) {
-        if (before - after >= 1) { g.textContent = fmt(t.fewer, num(before - after)); } else { g.classList.add('is-flat'); g.textContent = t.same; }
+      if (fewer) {
+        if (before - after >= 1) { g.textContent = fmt(fewer === true ? t.fewer : fewer, num(before - after)); } else { g.classList.add('is-flat'); g.textContent = t.same; }
         return;
       }
       if (after > 0 && before / after >= 1.1 && before - after >= 10) {
         var x = before / after;
         g.textContent = fmt(t.faster, x >= 10 ? Math.round(x) : x.toFixed(1));
+      } else if (before > 0 && after / before >= 1.25 && after - before >= 30) {
+        g.classList.add('is-worse');
+        g.textContent = fmt(t.slower, (after / before).toFixed(1));
       } else {
         g.classList.add('is-flat');
         g.textContent = t.same;
@@ -200,6 +208,28 @@
         state('cache', 'done');
         if (plan && !enabled.cache) note('cache', t.noCache);
       }
+      if (run.pagecache && typeof run.pagecache.on === 'number') {
+        pair('pagecache', run.pagecache.off, run.pagecache.on);
+        gain('pagecache', run.pagecache.off, run.pagecache.on);
+        state('pagecache', 'done');
+      } else if (plan && enabled.pagecache === false) {
+        note('pagecache', t.switchedOff);
+        state('pagecache', 'skipped');
+      }
+      var o = run.optimize;
+      if (o && o.off && o.on) {
+        var held = function (s) { return (s.blocking || 0) + (s.eager || 0); };
+        pair('optimize', held(o.off), held(o.on), { many: t.files, one: t.file });
+        gain('optimize', held(o.off), held(o.on), t.fewerFiles);
+        note('optimize', fmt(t.optNote, num(o.off.blocking || 0), num(o.on.blocking || 0), num(o.off.eager || 0), num(o.on.eager || 0),
+          num(o.off.modern || 0), num(o.on.modern || 0), Math.round(o.off.kb || 0), Math.round(o.on.kb || 0))
+          + (o.on.images && !o.on.modern ? ' ' + t.optNoWebp : ''));
+        state('optimize', 'done');
+        if (plan && enabled.optimize === false) note('optimize', t.switchedOff);
+      } else if (plan && enabled.optimize === false) {
+        note('optimize', t.switchedOff);
+        state('optimize', 'skipped');
+      }
       var nav = run.nav || {};
       ['smartprefetch', 'instantnav'].forEach(function (part) {
         if (typeof nav[part] === 'number' && typeof nav.off === 'number') {
@@ -232,7 +262,11 @@
       var wrap = box.querySelector('[data-spc-history-box]');
       var holder = box.querySelector('[data-spc-history-chart]');
       var a = list.map(function (r) { return r.nav && typeof r.nav.all === 'number' ? r.nav.all : null; });
-      var b = list.map(function (r) { return r.pages && typeof r.pages.on === 'number' ? r.pages.on : null; });
+      // the server's best answer: from the page cache when it answered, else built with the data cache
+      var b = list.map(function (r) {
+        if (r.pagecache && typeof r.pagecache.on === 'number') return r.pagecache.on;
+        return r.pages && typeof r.pages.on === 'number' ? r.pages.on : null;
+      });
       if (list.length < 2 || !a.concat(b).some(function (v) { return v !== null; })) { wrap.hidden = true; return; }
       wrap.hidden = false;
       box.querySelector('[data-spc-history-title]').textContent = t.historyTitle;
@@ -375,11 +409,13 @@
           var p0 = popup.performance;
           var clickAt = p0.timeOrigin + p0.now();
           function finish(ms) { if (!done) { done = true; resolve(Math.max(0, Math.round(ms))); } }
-          d.addEventListener('instantnav:loaded', function () {
-            popup.requestAnimationFrame(function () {
-              popup.requestAnimationFrame(function () { finish(popup.performance.timeOrigin + popup.performance.now() - clickAt); });
-            });
-          }, { once: true });
+          // the swap, timed to the frame that paints it (as a new page is timed to its first paint),
+          // not to the end of the transition that follows; older InstantNav only says "loaded"
+          function swapped() {
+            popup.requestAnimationFrame(function () { finish(popup.performance.timeOrigin + popup.performance.now() - clickAt); });
+          }
+          d.addEventListener('instantnav:swapped', swapped, { once: true });
+          d.addEventListener('instantnav:loaded', swapped, { once: true });
           a.click();
           var t0 = Date.now();
           (function poll() {
@@ -505,7 +541,7 @@
       box.classList.remove('spc-audit--first');
       progress.hidden = false;
       fill.style.width = '0%';
-      ['cache', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed'].forEach(function (p) { state(p, null); note(p, ''); gain(p); clear(card(p).querySelector('[data-spc-bars]')); });
+      ['cache', 'pagecache', 'optimize', 'smartprefetch', 'instantnav', 'instantcart', 'cartspeed'].forEach(function (p) { state(p, null); note(p, ''); gain(p); clear(card(p).querySelector('[data-spc-bars]')); });
       box.querySelector('[data-spc-hero]').hidden = true;
 
       var t0 = Date.now();
@@ -522,7 +558,7 @@
         results.cache = plan.cache;
         var navModes = 1 + (plan.enabled.smartprefetch ? 1 : 0) + (plan.enabled.instantnav ? 1 : 0);
         if (navModes > 1) navModes++;
-        total = 1 + (popup ? navModes * (CLICKS + 1) : 0) + plan.pages.length + 2 + 1;
+        total = 1 + (popup ? navModes * (CLICKS + 1) : 0) + plan.pages.length + 3 + 1;
         advance();
 
         // 1. clicks
@@ -538,7 +574,8 @@
       }).then(function () {
         // 2. pages, one at a time
         state('cache', 'running');
-        var off = [], on = [], chain = Promise.resolve(), pageCache = false;
+        if (plan.enabled.pagecache) state('pagecache', 'running');
+        var off = [], on = [], full = [], fullOff = [], chain = Promise.resolve(), pageCache = false, missed = false;
         plan.pages.forEach(function (page, i) {
           chain = chain.then(function () {
             advance(fmt(t.page, i + 1, plan.pages.length, page.name));
@@ -546,14 +583,28 @@
               if (r.code === 'page_cache') { pageCache = true; return; }
               if (r.error) { note('cache', fmt(t.failed, r.error)); return; }
               off.push(r.off); on.push(r.on);
+              // the page cache's figure: against the same page's "without", for the pages it answered
+              if (typeof r.full === 'number') { full.push(r.full); fullOff.push(r.off); } else if (plan.enabled.pagecache) missed = true;
             });
           });
         });
         return chain.then(function () {
           var avg = function (l) { return l.length ? Math.round(l.reduce(function (s, v) { return s + v; }, 0) / l.length) : null; };
           if (off.length) { results.pages = { off: avg(off), on: avg(on) }; show({ pages: results.pages, cache: plan.cache }, plan); } else state('cache', null);
-          // a note after show(), which sets the card's own note
-          if (pageCache) note('cache', t.pageCache);
+          if (full.length) { results.pagecache = { off: avg(fullOff), on: avg(full) }; show({ pagecache: results.pagecache }, plan); } else if (plan.enabled.pagecache) state('pagecache', null);
+          if (!plan.enabled.pagecache) show({}, plan);
+          // notes after show(), which sets the card's own note
+          if (pageCache) { note('cache', t.pageCache); note('pagecache', t.pageCache); } else if (missed && !full.length) note('pagecache', t.pcMiss);
+        });
+      }).then(function () {
+        // 2b. Optimize: what holds the page up, without it and with it
+        advance(t.optimizeStep);
+        if (!plan.enabled.optimize) { show({}, plan); return null; }
+        state('optimize', 'running');
+        return post('optimize').then(function (r) {
+          if (r.error) { state('optimize', null); note('optimize', fmt(t.failed, r.error)); return; }
+          results.optimize = { off: r.off, on: r.on };
+          show({ optimize: results.optimize }, plan);
         });
       }).then(function () {
         // 3. the cart

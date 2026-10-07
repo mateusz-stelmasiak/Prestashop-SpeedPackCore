@@ -1202,6 +1202,12 @@
         commit(function () {
             apply(doc, url);
             window.scrollTo(0, 0);
+            /* The new content is in and paints with the next frame (the
+             * transition, if any, has only begun): the moment a visitor
+             * sees the page, which the speed audit times. */
+            try {
+                document.dispatchEvent(new CustomEvent('instantnav:swapped', { detail: { url: url } }));
+            } catch (e) { /* older browsers */ }
         }).then(function () {
             settle();
             announce(url);

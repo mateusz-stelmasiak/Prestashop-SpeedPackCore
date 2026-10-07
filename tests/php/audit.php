@@ -101,9 +101,30 @@ $page = SpcAudit::page($plan['pages'][0]['url'], $plan['tokens']);
 echo '    page ', json_encode($page), ' in ', round(microtime(true) - $t0, 2), " s\n";
 ok($page['off'] > 180 && $page['on'] < 120 && !empty($page['verified']), 'page: without the data cache slow, with it quick, every answer verified');
 $log = file_get_contents($SHOPLOG);
-$all = SpcAudit::label(SpcAudit::PARTS);
-ok(substr_count($log, 'audit=' . $all . ' cache=on') === 4 && substr_count($log, 'audit=none cache=off') === 3, 'page: the shop really ran without the data cache for "off" (3), with it for "on" (1 warm + 3)');
-ok(count(array_filter(explode("\n", $log))) === 7, 'page: 7 requests in all');
+$data = SpcAudit::label(array_diff(SpcAudit::PARTS, ['pagecache', 'optimize']));
+ok(substr_count($log, 'audit=' . $data . ' cache=on') === 4 && substr_count($log, 'audit=none cache=off') === 3, 'page: the shop really ran without the data cache for "off" (3), with it for "on" (1 warm + 3)');
+ok(count(array_filter(explode("\n", $log))) === 7 && $page['full'] === null, 'page: 7 requests in all, no page cache figure when it is off');
+
+// --- the page cache: kept by an ordinary visitor's request, answered to "every part on"
+array_map('unlink', glob(sys_get_temp_dir() . '/spc-audit-shop-kept-*') ?: []);
+file_put_contents($SHOP, json_encode(['key' => Configuration::get('SPC_AUDIT_KEY'), 'pagecache' => false, 'own' => true]));
+@unlink($SHOPLOG);
+$pc = SpcAudit::page($plan['pages'][0]['url'], $plan['tokens'], true);
+echo '    page cache ', json_encode($pc), "\n";
+$log = file_get_contents($SHOPLOG);
+ok($pc['hit'] === true && $pc['full'] < 30 && $pc['off'] > 180 && $pc['on'] < 120, 'page cache: off slow, data cache quick, the kept page quickest');
+ok(substr_count($log, 'audit=visitor cache=on') === 1 && substr_count($log, 'audit=' . SpcAudit::label(SpcAudit::PARTS) . ' HIT') === 3 && substr_count($log, 'HIT') === 3, 'page cache: one visitor request keeps the page, the 3 "every part on" requests get it, no other side does');
+array_map('unlink', glob(sys_get_temp_dir() . '/spc-audit-shop-kept-*') ?: []);
+file_put_contents($SHOP, json_encode(['key' => Configuration::get('SPC_AUDIT_KEY'), 'pagecache' => false, 'own' => false]));
+$miss = SpcAudit::page($plan['pages'][0]['url'], $plan['tokens'], true);
+ok($miss['hit'] === false && $miss['full'] === null && $miss['off'] > 180, 'page cache: a page it did not answer gives no figure, not a made-up one');
+
+// --- Optimize: what holds the page up, without it and with it
+$opt = SpcAudit::optimize([$plan['pages'][0]['url'], $plan['pages'][4]['url']], $plan['tokens']);
+echo '    optimize ', json_encode($opt), "\n";
+ok($opt['off']['blocking'] === 4 && $opt['on']['blocking'] === 0 && $opt['off']['eager'] === 2 && $opt['on']['eager'] === 0 && $opt['on']['modern'] === 2 && $opt['off']['modern'] === 0, 'optimize: 2 pages, blocking scripts 4 to 0, pictures at once 2 to 0, WebP 0 to 2');
+$w = SpcAudit::weigh('<script src=a.js></script><script async src=b.js></script><script type="module" src=c.js></script><script type="application/ld+json">{}</script><script>x</script><img src=a.avif><img loading=lazy src=b.png>');
+ok($w['blocking'] === 1 && $w['eager'] === 1 && $w['modern'] === 1 && $w['images'] === 2, 'weigh: only plain external scripts hold the page up; lazy pictures do not count as at once');
 file_put_contents($SHOP, json_encode(['key' => Configuration::get('SPC_AUDIT_KEY'), 'pagecache' => true]));
 $cached = SpcAudit::page($plan['pages'][0]['url'], $plan['tokens']);
 ok(isset($cached['code']) && $cached['code'] === 'page_cache', 'page: a page cache answering instead of the shop is caught, not measured');
@@ -129,8 +150,9 @@ echo '    cartspeed ', json_encode($cs), "\n";
 ok($cs['off']['queries'] === 73 && $cs['on']['queries'] === 1 && Configuration::get('SPC_CS_ENABLED') === 1, 'cartspeed: 73 queries without, 1 with, setting restored');
 
 // --- the AJAX steps and saving
-$run = SpcAudit::save(['cache' => 'redis<script>', 'pages' => ['off' => 412.4, 'on' => '95', 'x' => 'evil'], 'cart' => ['core' => 'abc', 'lean' => 40], 'cartspeed' => ['off' => 73, 'on' => 1], 'nav' => ['off' => 650, 'all' => 40, 'hack' => 1], 'extra' => '<b>']);
-ok($run['cache'] === 'redisscript' && $run['pages'] === ['off' => 412.4, 'on' => 95.0] && $run['cart']['core'] === null && !isset($run['nav']['hack']) && !isset($run['extra']), 'save: numbers only, known keys only');
+$run = SpcAudit::save(['cache' => 'redis<script>', 'pagecache' => ['off' => 400, 'on' => 12], 'optimize' => ['off' => ['blocking' => 30, 'eager' => 13, 'kb' => 160.44, 'x' => 1], 'on' => ['blocking' => 0, 'eager' => '4']], 'pages' => ['off' => 412.4, 'on' => '95', 'x' => 'evil'], 'cart' => ['core' => 'abc', 'lean' => 40], 'cartspeed' => ['off' => 73, 'on' => 1], 'nav' => ['off' => 650, 'all' => 40, 'hack' => 1], 'extra' => '<b>']);
+ok($run['cache'] === 'redisscript' && $run['pages'] === ['off' => 412.4, 'on' => 95.0] && $run['cart']['core'] === null && !isset($run['nav']['hack']) && !isset($run['extra'])
+    && $run['pagecache'] === ['off' => 400.0, 'on' => 12.0] && $run['optimize']['off']['blocking'] === 30.0 && $run['optimize']['on']['eager'] === 4.0 && $run['optimize']['off']['kb'] === 160.4 && !isset($run['optimize']['off']['x']) && $run['optimize']['on']['modern'] === null, 'save: numbers only, known keys only (page cache and Optimize too)');
 for ($i = 0; $i < 15; $i++) SpcAudit::save(['nav' => ['all' => $i]]);
 ok(count(SpcAudit::history()) === 12 && Configuration::get('SPC_AUDIT_DONE') === 1, 'save: last 12 kept, audit marked done');
 Context::getContext()->smarty->vars = [];

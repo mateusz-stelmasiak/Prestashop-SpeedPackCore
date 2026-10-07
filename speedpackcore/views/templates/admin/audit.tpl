@@ -57,6 +57,42 @@
       </div>
     </div>
 
+    <div class="spc-card" data-spc-part="pagecache">
+      <div class="spc-icon">
+        <svg class="spc-ic spc-ic-pages" viewBox="0 0 48 48" aria-hidden="true">
+          <rect class="spc-l spc-l1" x="14" y="6" width="24" height="30" rx="3"/>
+          <rect class="spc-l spc-l2" x="10" y="10" width="24" height="30" rx="3"/>
+          <path class="spc-l spc-l3" d="M15 19h14M15 25h14M15 31h9"/>
+        </svg>
+        <span class="spc-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      </div>
+      <div class="spc-card-body">
+        <h4>{l s='Page cache' mod='speedpackcore'}</h4>
+        <p class="spc-card-what">{l s='Server answer time, the same pages kept ready' mod='speedpackcore'}</p>
+        <div class="spc-bars" data-spc-bars></div>
+        <p class="spc-gain" data-spc-gain></p>
+        <p class="spc-note" data-spc-note></p>
+      </div>
+    </div>
+
+    <div class="spc-card" data-spc-part="optimize">
+      <div class="spc-icon">
+        <svg class="spc-ic spc-ic-opt" viewBox="0 0 48 48" aria-hidden="true">
+          <rect class="spc-l spc-l1" x="6" y="9" width="36" height="30" rx="3"/>
+          <path class="spc-l spc-l2" d="M6 16h36"/>
+          <path class="spc-l spc-l3" d="M12 33l7-8 5 5 4-4 8 7"/>
+        </svg>
+        <span class="spc-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      </div>
+      <div class="spc-card-body">
+        <h4>{l s='Optimize' mod='speedpackcore'}</h4>
+        <p class="spc-card-what">{l s='Files that hold up the home page and a product page' mod='speedpackcore'}</p>
+        <div class="spc-bars" data-spc-bars></div>
+        <p class="spc-gain" data-spc-gain></p>
+        <p class="spc-note" data-spc-note></p>
+      </div>
+    </div>
+
     <div class="spc-card" data-spc-part="smartprefetch">
       <div class="spc-icon">
         <svg class="spc-ic spc-ic-radar" viewBox="0 0 48 48" aria-hidden="true">
