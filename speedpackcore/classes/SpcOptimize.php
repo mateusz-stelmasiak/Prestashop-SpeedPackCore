@@ -154,7 +154,7 @@ class SpcOptimize extends SpcFeature
             $html = SpcHtml::defer($html);
         }
         if (self::on(self::K_CRITICAL) && in_array($page, self::CRITICAL_PAGES, true) && !Tools::getValue('spc_nocrit')) {
-            $html = SpcHtml::critical($html, (string) Configuration::get(self::criticalKey($page)), (string) Configuration::get(self::criticalKey($page) . '_FP'));
+            $html = SpcHtml::critical($html, self::criticalCss($page), (string) Configuration::get(self::criticalKey($page) . '_FP'));
         }
         if (self::on(self::K_MINIFY)) {
             $html = SpcHtml::minify($html);
@@ -206,6 +206,17 @@ class SpcOptimize extends SpcFeature
      *  Critical CSS
      * ------------------------------------------------------------------ */
 
+    /** A page's critical CSS as made (older ones, kept as HTML, have their entities undone). */
+    public static function criticalCss($page)
+    {
+        $v = (string) Configuration::get(self::criticalKey($page));
+        if (strpos($v, 'b64:') === 0) {
+            return (string) base64_decode(substr($v, 4));
+        }
+
+        return html_entity_decode($v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     public static function criticalKey($page)
     {
         return 'SPC_OPT_CRIT_' . strtoupper(str_replace('-', '_', $page));
@@ -218,10 +229,15 @@ class SpcOptimize extends SpcFeature
             return ['error' => 'page'];
         }
         $css = trim((string) $css);
-        if (strlen($css) > 60000) {
+        if ($css === '') {
+            return ['error' => 'empty'];
+        }
+        // kept encoded (base64 fits in the configuration's text column up to about 46 kB)
+        if (strlen($css) > 46000) {
             return ['error' => 'too large', 'bytes' => strlen($css)];
         }
-        Configuration::updateValue(self::criticalKey($page), $css, true);
+        // encoded, so PrestaShop's HTML cleaning never touches it (it turned ">" into "&gt;")
+        Configuration::updateValue(self::criticalKey($page), 'b64:' . base64_encode($css));
         Configuration::updateValue(self::criticalKey($page) . '_FP', SpcHtml::fingerprint($hrefs));
         Configuration::updateValue(self::criticalKey($page) . '_AT', date('Y-m-d H:i'));
 
@@ -459,7 +475,7 @@ NG;
         $critical = [];
         $names = ['index' => $this->l('Home page'), 'category' => $this->l('Category'), 'product' => $this->l('Product'), 'cms' => $this->l('CMS page')];
         foreach (self::CRITICAL_PAGES as $p) {
-            $css = (string) Configuration::get(self::criticalKey($p));
+            $css = self::criticalCss($p);
             $critical[] = ['page' => $p, 'name' => $names[$p], 'kb' => $css !== '' ? round(strlen($css) / 1024, 1) : 0, 'at' => (string) Configuration::get(self::criticalKey($p) . '_AT')];
         }
         $out .= $this->render('admin/optimize.tpl', ['spc_opt' => [
@@ -476,7 +492,6 @@ NG;
                 'generating' => $this->l('Reading %s...'),
                 'generated' => $this->l('Critical CSS made for %d kinds of page.'),
                 'blocked' => $this->l('The shop pages could not be read from the back office (is the back office on another address than the shop?).'),
-                'tooLarge' => $this->l('The critical CSS of %1$s came out too large (%2$s); the theme needs a lighter top of the page.'),
                 'failed' => $this->l('Stopped: %s'),
                 'names' => $names,
             ]),

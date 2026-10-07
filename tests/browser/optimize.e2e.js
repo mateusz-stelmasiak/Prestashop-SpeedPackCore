@@ -85,7 +85,7 @@ const server = http.createServer((req, res) => {
   ok(state === 'Critical CSS made for 2 kinds of page.', 'critical CSS made for both pages (' + state + ')');
   const css = saved.index ? saved.index.css : '';
   console.log('    critical CSS: ' + css.length + ' bytes: ' + css.slice(0, 600));
-  ok(/#header\s*\{/.test(css) && /\.hero\s*\{\s*height: 300px/.test(css) && /\.btn-top:hover/.test(css), 'kept: the header, the hero, the hover of a link in the first screen');
+  ok(/#header\s*\{/.test(css) && /\.hero\s*\{\s*height: 300px/.test(css) && !/\.btn-top:hover/.test(css), 'kept: the header, the hero; left out: a hover, which the first paint never needs');
   ok(/\.gone\s*\{\s*display: none/.test(css), 'kept: the rule that hides something in the first screen (no flash of it)');
   ok(!/\.far\s*\{\s*margin-top/.test(css) && !/unused-thing/.test(css) && !/::selection/.test(css), 'left out: what is far below, what matches nothing, ::selection');
   ok(/@media \(max-width: 600px\)\s*\{\s*\.hero\s*\{\s*height: 120px/.test(css) && !/olive/.test(css), 'the phone width read too: its @media rule for the hero, not the one for what is below');

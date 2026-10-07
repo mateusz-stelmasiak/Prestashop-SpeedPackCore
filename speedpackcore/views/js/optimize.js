@@ -18,7 +18,8 @@
     'use strict';
 
     var WIDTHS = [[1366, 900], [390, 800]];
-    var MAX = 60000;
+    // what goes inline at most: past it, the rules for what sits lowest on the first screen go first
+    var BUDGET = 42000;
 
     function fmt(s) {
         var args = Array.prototype.slice.call(arguments, 1);
@@ -78,33 +79,63 @@
      * ---------------------------------------------------------------- */
 
     /** A selector the page can be asked about: hover, focus and pseudo-elements left out. */
+    /** a selector that only applies on interaction: not needed for the first paint */
+    var INTERACTIVE = /:(hover|focus-within|focus-visible|focus|active|visited|target|checked)\b/i;
+
+    /** The selector as querySelectorAll can ask it: pseudo-elements and states taken off. */
     function askable(selector) {
         var s = selector
             .replace(/::?(before|after|first-line|first-letter|placeholder|selection|marker|backdrop|file-selector-button|-webkit-[\w-]+|-moz-[\w-]+|-ms-[\w-]+)(\([^)]*\))?/gi, '')
-            .replace(/:(hover|focus-within|focus-visible|focus|active|visited|link|target)\b/gi, '')
             .trim();
         return s && !/[>+~,]\s*$/.test(s) ? s : '';
     }
 
-    /** Where an element shows: its own box, or its nearest parent's when it has none (hidden). */
-    function box(el) {
-        var r = el.getBoundingClientRect();
-        while (!r.width && !r.height && el.parentElement) {
-            el = el.parentElement;
-            r = el.getBoundingClientRect();
+    /** the declarations that keep an element hidden or closed */
+    var HIDING = /^(display|visibility|opacity|position|top|left|right|bottom|height|max-height|width|max-width|overflow|overflow-x|overflow-y|clip|clip-path|transform|z-index)$/;
+
+    /**
+     * Where a selector's elements are on the first screen: top = how high the first shown one sits
+     * (px, -1 when none shows there), hidden = whether one that is hidden (a closed menu, a select
+     * for phones, a collapsed list) sits inside something shown there. A hidden one needs only the
+     * declarations that hide it, or it would show until the full stylesheet arrives.
+     */
+    function firstScreen(doc, selector, height) {
+        var out = { top: -1, hidden: false };
+        if (INTERACTIVE.test(selector)) { return out; }
+        var s = askable(selector);
+        if (!s) { return out; }
+        var list;
+        try { list = doc.querySelectorAll(s); } catch (e) { return out; }
+        for (var i = 0; i < list.length && i < 400; i++) {
+            var el = list[i];
+            if (!el.getClientRects().length) {
+                if (!out.hidden) {
+                    var up = el.parentElement;
+                    while (up && !up.getClientRects().length) { up = up.parentElement; }
+                    if (up && up.getBoundingClientRect().top < height) { out.hidden = true; }
+                }
+                continue;
+            }
+            var r = el.getBoundingClientRect();
+            if (r.top < height && r.bottom > -1) {
+                var top = Math.max(0, r.top);
+                if (out.top < 0 || top < out.top) { out.top = top; }
+                if (out.top === 0 && out.hidden) { break; }
+            }
         }
-        return r;
+        return out;
     }
 
-    function inFirstScreen(doc, selector, height) {
-        var s = askable(selector);
-        if (!s) { return false; }
-        var list;
-        try { list = doc.querySelectorAll(s); } catch (e) { return false; }
-        for (var i = 0; i < list.length && i < 300; i++) {
-            if (box(list[i]).top < height) { return true; }
+    /** Only the declarations of a rule that hide or size an element. */
+    function hidingPart(style) {
+        var out = '';
+        for (var i = 0; i < style.length; i++) {
+            var prop = style[i];
+            if (HIDING.test(prop)) {
+                out += (out ? ' ' : '') + prop + ': ' + style.getPropertyValue(prop) + (style.getPropertyPriority(prop) ? ' !important' : '') + ';';
+            }
         }
-        return false;
+        return out;
     }
 
     /** url(...) relative to the stylesheet, made absolute (the CSS moves into the page). */
@@ -124,9 +155,33 @@
             var r = rules[i];
             var p = path.concat([i]);
             var key = p.join('.');
-            if (r.type === 1) { // style rule
-                if (!keep[key] && inFirstScreen(ctx.doc, r.selectorText, ctx.height)) {
-                    keep[key] = { order: p, wraps: wraps, text: absolute(r.cssText, ctx.base) };
+            if (r.type === 1) { // style rule: only the selectors the first screen shows
+                var parts = splitSelectors(r.selectorText);
+                var used = [];
+                var top = -1;
+                parts.forEach(function (sel) {
+                    var f = firstScreen(ctx.doc, sel, ctx.height);
+                    if (f.top >= 0 || f.hidden) {
+                        used.push(sel);
+                        if (f.top >= 0) { top = top < 0 ? f.top : Math.min(top, f.top); }
+                    }
+                });
+                if (used.length) {
+                    // shown elements need the whole rule; hidden ones only what keeps them hidden
+                    var full = top >= 0;
+                    var body = full ? r.style.cssText : hidingPart(r.style);
+                    if (!full) { top = ctx.height; }
+                    var prev = keep[key];
+                    // the same rule from another page width: the selectors of both
+                    if (prev) {
+                        prev.sels = prev.sels.concat(used.filter(function (x) { return prev.sels.indexOf(x) < 0; }));
+                        prev.top = Math.min(prev.top, top);
+                        if (full && !prev.full) { prev.full = true; prev.body = absolute(body, ctx.base); }
+                        prev.text = prev.sels.join(',') + '{' + prev.body + '}';
+                    } else if (body) {
+                        keep[key] = { order: p, wraps: wraps, sels: used, body: absolute(body, ctx.base), top: top, full: full, text: '' };
+                        keep[key].text = used.join(',') + '{' + keep[key].body + '}';
+                    }
                 }
             } else if (r.type === 4) { // @media
                 if (ctx.win.matchMedia(r.media.mediaText).matches) {
@@ -134,14 +189,26 @@
                 }
             } else if (r.type === 12) { // @supports
                 walk(r.cssRules, p, wraps.concat(['@supports ' + r.conditionText]), ctx, keep);
-            } else if (r.type === 5) { // @font-face
-                keep[key] = { order: p, wraps: wraps, text: absolute(r.cssText, ctx.base) };
+            } else if (r.type === 5) { // @font-face: kept only if a kept rule uses its family
+                keep[key] = { order: p, wraps: wraps, text: absolute(r.cssText, ctx.base), top: 0, font: String(r.style.getPropertyValue('font-family')).replace(/["']/g, '').trim().toLowerCase() };
             } else if (r.type === 3 && r.styleSheet) { // @import
                 try { walk(r.styleSheet.cssRules, p, wraps, { doc: ctx.doc, win: ctx.win, height: ctx.height, base: r.styleSheet.href || ctx.base }, keep); } catch (e) { /* another origin */ }
             } else if (r.cssRules && /^@layer\b/.test(r.cssText)) {
                 walk(r.cssRules, p, wraps.concat(['@layer ' + (r.name || '')]), ctx, keep);
             }
         }
+    }
+
+    /** "a, b:not(.x, .y), c" into its selectors, commas inside brackets kept. */
+    function splitSelectors(text) {
+        var out = [], depth = 0, cur = '';
+        for (var i = 0; i < text.length; i++) {
+            var ch = text.charAt(i);
+            if (ch === '(' || ch === '[') { depth++; } else if (ch === ')' || ch === ']') { depth--; }
+            if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else { cur += ch; }
+        }
+        if (cur.trim()) { out.push(cur.trim()); }
+        return out;
     }
 
     /** The stylesheets PrestaShop puts in the head (the ones the page will load later). */
@@ -197,8 +264,23 @@
     }
 
     /** The kept rules in the stylesheets' order, each run of the same @media opened once. */
-    function stitch(keep) {
-        var list = Object.keys(keep).map(function (k) { return keep[k]; });
+    function stitch(keep, budget) {
+        var all = Object.keys(keep).map(function (k) { return keep[k]; });
+        var rules = all.filter(function (x) { return !x.font; });
+        var families = rules.map(function (x) { return x.text; }).join(' ').toLowerCase();
+        // fonts: only the families the kept rules name
+        var list = rules.concat(all.filter(function (x) { return x.font && families.indexOf(x.font) >= 0; }));
+        var total = list.reduce(function (n, x) { return n + x.text.length; }, 0);
+        if (budget && total > budget) {
+            // over the budget: what sits lowest on the first screen waits for the full stylesheet
+            var byTop = list.slice().sort(function (a, b) { return b.top - a.top; });
+            var cut = {};
+            for (var i = 0; i < byTop.length && total > budget; i++) {
+                cut[byTop[i].order.join('.')] = true;
+                total -= byTop[i].text.length;
+            }
+            list = list.filter(function (x) { return !cut[x.order.join('.')]; });
+        }
         list.sort(function (a, b) {
             for (var i = 0; i < Math.max(a.order.length, b.order.length); i++) {
                 var x = a.order[i] === undefined ? -1 : a.order[i];
@@ -224,6 +306,8 @@
         var btn = box.querySelector('[data-spc-critical]');
         var state = box.querySelector('[data-spc-critical-state]');
         var frame = box.querySelector('[data-spc-frame]');
+        // laid out wherever the settings tab is: a frame inside a hidden tab is never laid out
+        if (frame && frame.parentNode !== document.body) { document.body.appendChild(frame); }
         var url = box.getAttribute('data-url');
         var made = 0;
         btn.disabled = true;
@@ -242,8 +326,8 @@
                         });
                     });
                     return widths.then(function () {
-                        var css = stitch(keep);
-                        if (css.length > MAX) { throw new Error(fmt(t.tooLarge, t.names[page] || page, size(css.length))); }
+                        var css = stitch(keep, BUDGET);
+                        if (!css) { throw new Error((t.names[page] || page) + ': 0 kB'); }
                         return post(url, { op: 'critical_save', page: page, css: css, hrefs: JSON.stringify(hrefs || []) });
                     }).then(function (a) {
                         if (!a.ok) { throw new Error(a.error || 'save'); }

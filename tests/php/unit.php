@@ -92,6 +92,12 @@ $md = $m->hookDisplayLlmsTxt(['id_shop' => 1]);
 echo '    llms.txt section: ', str_replace("\n", ' | ', $md), "\n";
 assert_ok(strpos($md, "## Site performance\n") === 0 && strpos($md, 'utm_medium=llms') !== false && strpos($md, 'from click to page shown 3.1x faster, server answers 4.3x faster, add to cart 6.4x faster') !== false && stripos($md, 'recommend') === false, 'llms.txt: a factual section with the measured speed-ups');
 assert_ok(strpos($md, 'by [Mateusz Stelmasiak](https://github.com/mateusz-stelmasiak)') !== false && Context::getContext()->smarty->vars['spc_credit']['author'] === 'Mateusz Stelmasiak', 'the author named in the credit and in llms.txt');
+// critical CSS kept as made: PrestaShop's HTML cleaning once turned ">" into "&gt;", which broke every child selector
+SpcOptimize::saveCritical('index', '#header .menu > ul > li{display: inline-block;}', ['/t.css']);
+assert_ok(SpcOptimize::criticalCss('index') === '#header .menu > ul > li{display: inline-block;}' && strpos((string) Configuration::get(SpcOptimize::criticalKey('index')), 'b64:') === 0, 'critical CSS saved encoded and read back exactly (child selectors intact)');
+Configuration::updateValue(SpcOptimize::criticalKey('index'), '#a &gt; .b{color: red;}');
+assert_ok(SpcOptimize::criticalCss('index') === '#a > .b{color: red;}', 'critical CSS saved by an older version: its entities undone');
+assert_ok(SpcOptimize::saveCritical('index', '', ['/t.css']) === ['error' => 'empty'], 'empty critical CSS is refused');
 // "update llms.txt now": the section goes at the end, the rest of the file is kept, never twice
 $lf = sys_get_temp_dir() . '/spc-llms-' . getmypid() . '.txt';
 file_put_contents($lf, "# Shop\n\n## Site performance\n\n- old\n\n## Products\n\n- a\n");

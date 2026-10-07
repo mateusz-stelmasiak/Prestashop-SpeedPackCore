@@ -1,5 +1,11 @@
 # Changelog
 
+## SpeedPack Core 1.7.3
+
+- **Critical CSS fixed and made small.** It stopped at "came out too large (61 kB)" because every element counted as in the first screen, hidden ones too (closed menus, dropdowns, phone-only parts), and every rule for hovers and focus was kept. Now only what shows in the first screen counts, each rule keeps only the selectors that match there, hover/focus/active rules wait for the full stylesheet, and fonts are kept only when a kept rule uses them. Elements hidden there keep just the declarations that hide them, so nothing flashes open. Typical pages come out at 20–30 kB; past 42 kB the rules for what sits lowest on the first screen go first, instead of stopping.
+- **Fix: critical CSS lost its child selectors.** PrestaShop's HTML cleaning turned `>` into `&gt;` when it was saved, so rules like `#header .menu > ul > li` did nothing and the first paint fell apart. It is kept encoded now; CSS saved by 1.7.0–1.7.2 is read back with its entities undone.
+- The pages are read in a frame laid out whatever tab of the settings page is open; an empty result is never saved as done.
+
 ## SpeedPack Core 1.7.2
 
 - **Fix: the page cache could not be switched on** where PrestaShop kept a value for one shop (multistore, or left by another tool): that value won over the one saved, so the switch said "Switched on" and stayed off. Its settings and every part's switch are now saved for the whole installation, and the page says so if PrestaShop still does not keep it.
