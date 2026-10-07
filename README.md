@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.7.1.zip"><img alt="Download 1.7.1" src="https://img.shields.io/badge/download-speedpackcore--1.7.1.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.7.2.zip"><img alt="Download 1.7.2" src="https://img.shields.io/badge/download-speedpackcore--1.7.2.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.7.1" src="https://img.shields.io/badge/version-1.7.1-17201e">
+  <img alt="Version 1.7.2" src="https://img.shields.io/badge/version-1.7.2-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -83,7 +83,7 @@ Visitors who are not signed in and have nothing in their cart get catalogue page
 - **Only what is the same for everyone:** the home page, categories, products, CMS pages, brands, suppliers and the listings you choose. Signed-in customers, carts, the checkout, searches, previews, AJAX, POST and pages with a message are always built live
 - **One page per variant:** the shop and address, language, currency, country, phone or computer, and the picture format the browser takes are part of the key; campaign tags (`utm_*`, `gclid`, `fbclid`…) are not, so an ad click gets the ready page
 - **Cleared when things change:** a product, its stock or its price clears its page, its categories, its brand, the home page and the listings; a category, a CMS page, a brand, a supplier, a price rule, PrestaShop's "Clear cache" and a module install clear everything. Pages also expire after the time you set (12 hours by default)
-- **Kept gzipped** in `var/cache`, sent as they are to browsers that take gzip. Each answer says what happened in an `X-SpeedPack-Cache` header (`HIT`, `MISS`, or `BYPASS` with the reason); hits and the pages kept are on the settings page
+- **Kept gzipped** in `var/cache`, sent as they are to browsers that take gzip. Each answer says what happened in an `X-SpeedPack-Cache` header (`HIT`, `MISS`, or `BYPASS` with the reason); hits and the pages kept are on the settings page, and **Test as a visitor** opens your home page twice from the server and says in words whether it works, and if not, why
 - The speed audit's own requests are never kept; they get a kept page only when they ask for every part on, which is how the audit measures the page cache against the shop built without SpeedPack
 
 ### Optimize – lighter pages · *new in 1.7*
@@ -179,6 +179,7 @@ Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fas
 
 - Signed-in shoppers who have ordered before see **"Order the same as last time?"** with their last order (products, date, total) on the home page and in an empty cart, and a tile in their account
 - One tap puts the products in the cart, uses the **same addresses and carrier**, and opens the checkout **at the payment step**; with cash on delivery or a bank transfer a repeat order takes two taps
+- **An order that can be bought:** when something in the latest order is switched off, no longer for sale or sold out, the latest earlier order that can be bought whole is offered instead (of the last ten); otherwise the one with the most products still there
 - Products no longer sold or out of stock are left out, and the shopper is told which; customised lines are not repeated
 - **Summaries on the checkout** (on every checkout, not only repeat orders): each finished step shows what it holds under its title – name and e-mail, the address, the carrier and its price – so the shopper checks it at a glance and opens a step only to change it
 - Built for shops people buy from again and again: food, cosmetics, pet supplies, office supplies. Off until you switch it on; each place has its own switch
@@ -186,7 +187,7 @@ Where the guide has aged it is not followed: `magic_quotes_gpc` and `opcache.fas
 ### Custom audit and sharing
 
 - **Ask for a custom audit of my site:** a button on the settings page writes an e-mail to the author with your shop, its versions, the last speed audit and the health check, ready to send.
-- **Share the speed** (optional, off by default): a small visible line in your footer with your measured speed-up, and a short "Site performance" section in your llms.txt (with a llms.txt module that offers the `displayLlmsTxt` hook).
+- **Share the speed** (optional, off by default): a small visible line in your footer ("Fast pages: SpeedPack Core by Mateusz Stelmasiak") with your measured speed-up, and a short "Site performance" section in your llms.txt (with a llms.txt module that offers the `displayLlmsTxt` hook). **Save and update llms.txt now** makes the file again with such a module and puts the section at its end, once, keeping the rest of the file.
 
 ## Also in the pack: AsyncCart
 
@@ -257,7 +258,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.7.1.zip](dist/speedpackcore-1.7.1.zip)**.
+1. Download **[speedpackcore-1.7.2.zip](dist/speedpackcore-1.7.2.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -304,7 +305,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache de pages (1.7) :** les pages du catalogue prêtes pour les visiteurs non connectés et sans panier, en quelques millisecondes ; vidées quand un produit, son stock ou son prix change.
 - **Optimize (1.7) :** images WebP et AVIF, chargement différé des images, CSS critique, scripts différés dans leur ordre, HTML minifié, en-têtes de cache et compression dans `.htaccess`.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.7.1.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.7.2.zip`, puis Configurer.
 </details>
 
 <details>
@@ -322,7 +323,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache stron (1.7):** strony katalogu gotowe dla niezalogowanych gości bez koszyka, w kilka milisekund; czyszczone, gdy zmieni się produkt, jego stan lub cena.
 - **Optimize (1.7):** zdjęcia WebP i AVIF, leniwe ładowanie zdjęć, critical CSS, skrypty odroczone w swojej kolejności, zminifikowany HTML, nagłówki cache i kompresja w `.htaccess`.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.7.1.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.7.2.zip`, potem Konfiguruj.
 </details>
 
 ---

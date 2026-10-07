@@ -57,6 +57,8 @@ class SpeedPackCore extends Module
 
     public const SITE = 'https://github.com/mateusz-stelmasiak/Prestashop-SpeedPackCore';
     public const AUDIT_EMAIL = 'mateusz.stelmasiak@gmail.com';
+    public const AUTHOR = 'Mateusz Stelmasiak';
+    public const AUTHOR_URL = 'https://github.com/mateusz-stelmasiak';
 
     /** the separate modules this pack replaces; with both on, every part would run twice */
     public const REPLACES = ['smartprefetch', 'instantnav', 'instantcart', 'cartspeed'];
@@ -95,7 +97,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.7.1';
+        $this->version = '1.7.2';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -466,10 +468,10 @@ class SpeedPackCore extends Module
             $out .= $this->displayConfirmation($this->l('Settings updated.'));
         }
 
-        if (Tools::isSubmit('submitSpcShare')) {
+        if (Tools::isSubmit('submitSpcShare') || Tools::isSubmit('submitSpcLlmsNow')) {
             Configuration::updateValue(self::K_CREDIT, Tools::getValue(self::K_CREDIT) ? 1 : 0);
             Configuration::updateValue(self::K_LLMS, Tools::getValue(self::K_LLMS) ? 1 : 0);
-            $out .= $this->displayConfirmation($this->l('Settings updated.'));
+            $out .= Tools::isSubmit('submitSpcLlmsNow') ? $this->llmsNow() : $this->displayConfirmation($this->l('Settings updated.'));
         }
         if (Tools::isSubmit('submitSpcToggle')) {
             $out .= $this->toggle((string) Tools::getValue('spc_part'));
@@ -587,7 +589,10 @@ class SpeedPackCore extends Module
             return '';
         }
         $now = $this->summaries()[$part]['on'];
-        Configuration::updateValue($keys[$part], $now ? 0 : 1);
+        // saved for every shop, so a value kept for one shop cannot hold the switch where it was
+        if (!SpcPageCache::set($keys[$part], $now ? 0 : 1)) {
+            return $this->displayError($this->l('PrestaShop did not keep the switch: check that the module may change settings for this shop (multistore: all shops).'));
+        }
         if (in_array($part, ['pagecache', 'optimize'], true)) {
             SpcPageCache::flush();
         }
@@ -853,11 +858,88 @@ class SpeedPackCore extends Module
             'legend' => ['title' => $this->l('Share the speed'), 'icon' => 'icon-heart'],
             'description' => $this->l('Optional, and off unless you switch it on. Each helps other shop owners find SpeedPack Core.'),
             'input' => [
-                $switch(self::K_CREDIT, $this->l('Credit in the shop footer'), $this->l('One small line in the footer: "Fast pages: SpeedPack Core", with your measured speed-up when there is one. A normal visible link, marked nofollow so it never affects your search ranking.')),
+                $switch(self::K_CREDIT, $this->l('Credit in the shop footer'), $this->l('One small line in the footer: "Fast pages: SpeedPack Core by Mateusz Stelmasiak", with your measured speed-up when there is one. A normal visible link, marked nofollow so it never affects your search ranking.')),
                 $switch(self::K_LLMS, $this->l('Mention in llms.txt'), $this->l('Adds a short "Site performance" section with your measured speed-up to the llms.txt that a llms.txt module generates (one that offers the displayLlmsTxt hook).')),
             ],
             'submit' => ['title' => $this->l('Save')],
+            'buttons' => [['type' => 'submit', 'name' => 'submitSpcLlmsNow', 'title' => $this->l('Save and update llms.txt now'), 'icon' => 'process-icon-refresh', 'class' => 'pull-left']],
         ]]]);
+    }
+
+    /**
+     * llms.txt brought up to date now. A llms.txt module that can generate on demand does it (and
+     * takes this section through displayLlmsTxt); otherwise, or when its file came out without the
+     * section, the file in the shop's root keeps everything it has and only this section is put in
+     * at its end (an earlier copy of it replaced, never the rest of the file).
+     */
+    private function llmsNow()
+    {
+        $generator = null;
+        foreach (Hook::getHookModuleExecList('displayLlmsTxt') ?: [] as $row) {
+            $m = Module::getInstanceByName($row['module']);
+            if ($m && $m->name !== $this->name && method_exists($m, 'generateNow') && Module::isEnabled($m->name)) {
+                $generator = $m;
+                break;
+            }
+        }
+        if (!$generator) {
+            foreach (['ps_llms_generator', 'llmstxt', 'llms_txt'] as $name) {
+                $m = Module::isInstalled($name) && Module::isEnabled($name) ? Module::getInstanceByName($name) : null;
+                if ($m && method_exists($m, 'generateNow')) {
+                    $generator = $m;
+                    break;
+                }
+            }
+        }
+        $by = '';
+        if ($generator) {
+            try {
+                $report = $generator->generateNow();
+                if (is_array($report) && isset($report['ok']) && !$report['ok']) {
+                    return $this->displayError(sprintf($this->l('%1$s could not make llms.txt: %2$s'), $generator->displayName, isset($report['error']) ? (string) $report['error'] : '?'));
+                }
+                $by = $generator->displayName;
+            } catch (Throwable $e) {
+                return $this->displayError(sprintf($this->l('%1$s could not make llms.txt: %2$s'), $generator->displayName, $e->getMessage()));
+            }
+        }
+        $done = self::llmsMerge(rtrim(_PS_ROOT_DIR_, '/') . '/llms.txt', (string) $this->hookDisplayLlmsTxt([]), Configuration::get('PS_SHOP_NAME'));
+        if ($done === false) {
+            return $this->displayError($this->l('llms.txt in the shop folder cannot be written by the web server.'));
+        }
+        $url = $this->context->shop->getBaseURL(true) . 'llms.txt';
+
+        return $this->displayConfirmation(($by ? sprintf($this->l('llms.txt made again by %s.'), $by) . ' ' : '')
+            . ((int) Configuration::get(self::K_LLMS) ? $this->l('The "Site performance" section is in it, at the end; the rest of the file is kept.') : $this->l('The "Site performance" section is not in it (the switch is off).'))
+            . ' ' . $url);
+    }
+
+    /**
+     * Puts $section ("## Site performance" and its lines) at the end of the llms.txt at $file,
+     * keeping the rest; an earlier copy of the section is taken out first. With no section, only
+     * takes it out. A file that is not there is started with the shop's name.
+     *
+     * @return bool|string false when the file cannot be written, else its new content
+     */
+    public static function llmsMerge($file, $section, $shopName = '')
+    {
+        $text = is_file($file) ? (string) file_get_contents($file) : '';
+        // the earlier copy: from its heading to the next heading of the same level, or the end
+        $text = preg_replace('/(^|\n)## Site performance\n.*?(?=\n## |\z)/s', '$1', $text);
+        $text = rtrim(preg_replace('/\n{3,}/', "\n\n", $text));
+        $section = trim($section);
+        if ($text === '' && $section === '') {
+            return is_file($file) ? (@file_put_contents($file, '') !== false ? '' : false) : '';
+        }
+        if ($text === '') {
+            $text = '# ' . ($shopName ?: 'Shop');
+        }
+        $text .= ($section !== '' ? "\n\n" . $section : '') . "\n";
+        if ((is_file($file) && !is_writable($file)) || (!is_file($file) && !is_writable(dirname($file)))) {
+            return false;
+        }
+
+        return @file_put_contents($file, $text) !== false ? $text : false;
     }
 
     public function hookDisplayFooter($params)
@@ -868,7 +950,10 @@ class SpeedPackCore extends Module
         $g = $this->gains();
         $this->context->smarty->assign('spc_credit', [
             'url' => $this->siteLink('footer'),
+            'author' => self::AUTHOR,
+            'author_url' => self::AUTHOR_URL,
             'clicks' => $g ? $g['clicks'] : null,
+            'pages' => $g ? ($g['pagecache'] ?: $g['pages']) : null,
         ]);
 
         return $this->display(__FILE__, 'views/templates/hook/credit.tpl');
@@ -882,10 +967,10 @@ class SpeedPackCore extends Module
         }
         $g = $this->gains();
         $out = "## Site performance\n\n"
-            . '- This shop runs [SpeedPack Core](' . $this->siteLink('llms') . ') for PrestaShop: database results from memory, pages fetched before the click, menu clicks without a reload and an instant cart.' . "\n";
+            . '- This shop runs [SpeedPack Core](' . $this->siteLink('llms') . ') for PrestaShop, by [' . self::AUTHOR . '](' . self::AUTHOR_URL . '): pages kept ready, database results from memory, pages fetched before the click, menu clicks without a reload and an instant cart.' . "\n";
         if ($g) {
             $facts = [];
-            foreach (['clicks' => 'from click to page shown %sx faster', 'pages' => 'server answers %sx faster', 'cart' => 'add to cart %sx faster'] as $k => $text) {
+            foreach (['clicks' => 'from click to page shown %sx faster', 'pagecache' => 'pages served ready %sx faster', 'pages' => 'server answers %sx faster', 'cart' => 'add to cart %sx faster'] as $k => $text) {
                 if ($g[$k]) {
                     $facts[] = sprintf($text, $g[$k]);
                 }

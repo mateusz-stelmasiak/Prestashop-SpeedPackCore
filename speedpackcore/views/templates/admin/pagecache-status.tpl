@@ -24,5 +24,13 @@
       <span>{l s='longest a page is kept' mod='speedpackcore'}</span>
     </div>
   </div>
+  {if $spc_pc.test}
+    <div class="alert {if $spc_pc.test.ok}alert-success{else}alert-warning{/if}">
+      <strong>{$spc_pc.test.title|escape:'html':'UTF-8'}</strong><br>{$spc_pc.test.text|escape:'html':'UTF-8'}
+    </div>
+  {/if}
+  {if $spc_pc.enabled && !$spc_pc.writable}
+    <div class="alert alert-danger">{l s='The page cache folder cannot be written:' mod='speedpackcore'} <code>{$spc_pc.folder|escape:'html':'UTF-8'}</code></div>
+  {/if}
   <p class="help-block">{l s='Check it from a private window: the answer of a kept page carries the header X-SpeedPack-Cache: HIT (MISS when it was built, BYPASS with the reason when it may not be kept).' mod='speedpackcore'}</p>
 </div>

@@ -103,6 +103,47 @@ class SpcPageCache extends SpcFeature
         return (int) Configuration::get(self::K_ENABLED) === 1;
     }
 
+    /**
+     * A setting saved for the whole installation: every shop and group too. A value kept for one
+     * shop (multistore, or left by another tool) would otherwise win over the one saved here, and
+     * the switch would seem not to work.
+     */
+    public static function set($key, $value)
+    {
+        Configuration::updateGlobalValue($key, $value);
+        Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'configuration` SET `value` = \'' . pSQL((string) $value) . '\', date_upd = NOW()
+            WHERE `name` = \'' . pSQL($key) . '\' AND (id_shop IS NOT NULL OR id_shop_group IS NOT NULL)');
+        if (method_exists('Configuration', 'loadConfiguration')) {
+            Configuration::loadConfiguration();
+        }
+
+        return (string) Configuration::get($key) === (string) $value;
+    }
+
+    /**
+     * The shop's home page opened twice as a first-time visitor (a browser, no cookies): what the
+     * page cache did with each. ['first' => state, 'second' => state, 'ms' => [a, b]] or error.
+     */
+    public static function selfTest($context)
+    {
+        $url = $context->link->getPageLink('index', true);
+        $url .= (strpos($url, '?') === false ? '?' : '&') . 'spc_t=' . bin2hex(random_bytes(4));
+        $out = ['url' => $url, 'first' => null, 'second' => null, 'ms' => []];
+        foreach (['first', 'second'] as $i) {
+            $jar = [];
+            $r = SpcAudit::request($url, null, $jar, null, SpcAudit::BROWSER);
+            if (!$r['ok']) {
+                $out['error'] = $r['error'];
+
+                return $out;
+            }
+            $out[$i] = $r['cache'] === null ? '' : $r['cache'];
+            $out['ms'][] = $r['ttfb'];
+        }
+
+        return $out;
+    }
+
     public static function table()
     {
         return '`' . _DB_PREFIX_ . 'spc_pagecache`';
@@ -512,6 +553,55 @@ class SpcPageCache extends SpcFeature
      *  Settings
      * ------------------------------------------------------------------ */
 
+    /** Whether the cache folder can be written (made when it is missing). */
+    public static function writable()
+    {
+        $dir = self::folder();
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        return is_dir($dir) && is_writable($dir);
+    }
+
+    /** A self-test's result in words: ['ok' => bool, 'title' => ..., 'text' => ...]. */
+    protected function explainTest(array $t)
+    {
+        if (!empty($t['error'])) {
+            return ['ok' => false, 'title' => $this->l('The shop could not be opened from the server'), 'text' => sprintf($this->l('Opening %1$s gave: %2$s. The test needs cURL and the shop reachable from its own server.'), $t['url'], $t['error'])];
+        }
+        $ms = $t['ms'];
+        $first = (string) $t['first'];
+        $second = (string) $t['second'];
+        if ($second === 'HIT') {
+            return ['ok' => true, 'title' => $this->l('It works'), 'text' => sprintf($this->l('The first visit was built (%1$d ms), the second one was served ready (%2$d ms).'), $ms[0], $ms[1])];
+        }
+        if ($first === '' && $second === '') {
+            return ['ok' => false, 'title' => self::enabled() ? $this->l('The module did not answer') : $this->l('The page cache is off'), 'text' => self::enabled()
+                ? $this->l('The answers carry no X-SpeedPack-Cache header: either a cache in front of the shop (LiteSpeed, a CDN, another cache module) answered, or PrestaShop did not run the module for this page. The hooks were registered again; test once more.')
+                : $this->l('Switch it on above, save, then test again.')];
+        }
+        if (strpos($second, 'BYPASS') === 0) {
+            $why = trim(substr($second, 6));
+            $reasons = [
+                'page' => $this->l('the home page is not among the pages kept'),
+                'method' => $this->l('the request was not a plain GET'),
+                'ajax' => $this->l('the request looked like AJAX'),
+                'visitor' => $this->l('every visitor gets a cart or an account in the cookie: a module creates a cart on the first visit'),
+                'viewed' => $this->l('the visitor has viewed products, which ps_viewedproduct shows on the page'),
+                'notifications' => $this->l('a notification cookie was set'),
+                'param' => $this->l('the address carries a parameter that is never kept'),
+            ];
+
+            return ['ok' => false, 'title' => $this->l('Pages are built every time'), 'text' => sprintf($this->l('Reason: %s.'), isset($reasons[$why]) ? $reasons[$why] : $why)];
+        }
+        if (!self::writable()) {
+            return ['ok' => false, 'title' => $this->l('Pages cannot be kept'), 'text' => sprintf($this->l('The folder %s cannot be written by the web server. Give it write access (the same as var/cache).'), self::folder())];
+        }
+
+        return ['ok' => false, 'title' => $this->l('Pages are built but not kept'), 'text' => $this->l('The home page came out with something personal or a message on it (a notice, a cart, an error), or with a status other than 200, so it is not kept. Open it in a private window and look for a message or a cart.')];
+    }
+
     public function summary()
     {
         $on = self::enabled();
@@ -541,18 +631,25 @@ class SpcPageCache extends SpcFeature
             $n = self::flush();
             $out .= $this->displayConfirmation(sprintf($this->l('Page cache emptied (%d pages).'), $n));
         }
+        $test = null;
+        if (Tools::isSubmit('submitSpcPageCacheTest')) {
+            $test = $this->explainTest(self::selfTest($this->context));
+        }
         if (Tools::isSubmit('submitSpcPageCache')) {
             $ttl = (int) Tools::getValue(self::K_TTL);
             $pages = array_values(array_filter(self::PAGES, function ($p) { return (bool) Tools::getValue('SPC_PC_PAGE_' . $p); }));
             if ($ttl < 1 || $ttl > 720) {
                 $out .= $this->displayError($this->l('Keep pages for 1 to 720 hours.'));
             } else {
-                Configuration::updateValue(self::K_ENABLED, Tools::getValue(self::K_ENABLED) ? 1 : 0);
-                Configuration::updateValue(self::K_TTL, $ttl);
-                Configuration::updateValue(self::K_MOBILE, Tools::getValue(self::K_MOBILE) ? 1 : 0);
-                Configuration::updateValue(self::K_PAGES, implode(',', $pages));
+                $want = Tools::getValue(self::K_ENABLED) ? 1 : 0;
+                $saved = self::set(self::K_ENABLED, $want);
+                self::set(self::K_TTL, $ttl);
+                self::set(self::K_MOBILE, Tools::getValue(self::K_MOBILE) ? 1 : 0);
+                self::set(self::K_PAGES, implode(',', $pages ?: self::PAGES));
                 self::flush();
-                $out .= $this->displayConfirmation($this->l('Settings updated; the page cache was emptied.'));
+                $out .= $saved
+                    ? $this->displayConfirmation($this->l('Settings updated; the page cache was emptied.'))
+                    : $this->displayError($this->l('PrestaShop did not keep the switch: check that the module may change settings for this shop (multistore: all shops).'));
             }
         }
         self::purge(time());
@@ -565,6 +662,9 @@ class SpcPageCache extends SpcFeature
             'misses' => $stats['misses'],
             'rate' => $stats['rate'],
             'ttl' => (int) Configuration::get(self::K_TTL),
+            'test' => $test,
+            'writable' => self::writable(),
+            'folder' => self::folder(),
         ]]);
 
         $chosen = array_filter(explode(',', (string) Configuration::get(self::K_PAGES)));
@@ -606,7 +706,10 @@ class SpcPageCache extends SpcFeature
                 $switch(self::K_MOBILE, $this->l('Separate pages for phones'), $this->l('Keep this on if the theme or a module shows phones a different page.')),
             ],
             'submit' => ['title' => $this->l('Save')],
-            'buttons' => [['type' => 'submit', 'name' => 'submitSpcPageCacheFlush', 'title' => $this->l('Empty the page cache'), 'icon' => 'process-icon-eraser', 'class' => 'pull-left']],
+            'buttons' => [
+                ['type' => 'submit', 'name' => 'submitSpcPageCacheFlush', 'title' => $this->l('Empty the page cache'), 'icon' => 'process-icon-eraser', 'class' => 'pull-left'],
+                ['type' => 'submit', 'name' => 'submitSpcPageCacheTest', 'title' => $this->l('Test as a visitor'), 'icon' => 'process-icon-preview', 'class' => 'pull-left'],
+            ],
         ]]]);
     }
 }

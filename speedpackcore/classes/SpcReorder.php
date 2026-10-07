@@ -89,11 +89,18 @@ class SpcReorder extends SpcFeature
      *  The last order
      * ------------------------------------------------------------------ */
 
+    /** how many of the latest orders are looked at for one that can be bought again */
+    public const LOOK_BACK = 10;
+
     /**
-     * The customer's last valid order in this shop, with its lines.
+     * The order to repeat: the customer's latest valid order in this shop whose products can all
+     * still be bought. When something in the latest one is switched off, no longer for sale, gone
+     * or sold out, an earlier order where everything is there takes its place; when no order is
+     * whole, the one with the most products still there (the latest of those).
      *
      * @return array|null id_order, date_add, total, id_currency, id_carrier, id_address_delivery,
-     *                    id_address_invoice, lines[] (id_product, id_product_attribute, quantity, name)
+     *                    id_address_invoice, lines[] (id_product, id_product_attribute, quantity, name),
+     *                    available (lines that can be bought), earlier (not the latest order)
      */
     public static function lastOrder($idCustomer, $idShop)
     {
@@ -101,14 +108,36 @@ class SpcReorder extends SpcFeature
             return null;
         }
         $db = Db::getInstance();
-        $order = $db->getRow('SELECT id_order, date_add, total_paid_tax_incl total, id_currency, id_carrier, id_address_delivery, id_address_invoice
+        $orders = $db->executeS('SELECT id_order, date_add, total_paid_tax_incl total, id_currency, id_carrier, id_address_delivery, id_address_invoice
             FROM `' . _DB_PREFIX_ . 'orders` WHERE id_customer = ' . (int) $idCustomer . ' AND id_shop = ' . (int) $idShop . ' AND valid = 1
-            ORDER BY date_add DESC, id_order DESC');
-        if (!$order) {
-            return null;
+            ORDER BY date_add DESC, id_order DESC LIMIT ' . self::LOOK_BACK) ?: [];
+        $best = null;
+        $first = true;
+        foreach ($orders as $order) {
+            $lines = self::lines($order['id_order']);
+            if (!$lines) {
+                continue;
+            }
+            $order['lines'] = $lines;
+            $order['available'] = count(array_filter($lines, [__CLASS__, 'buyable']));
+            $order['earlier'] = !$first;
+            $first = false;
+            if ($order['available'] === count($lines)) {
+                return $order;
+            }
+            if ($best === null || $order['available'] > $best['available']) {
+                $best = $order;
+            }
         }
+
+        return $best;
+    }
+
+    /** An order's lines that can be put in a cart again (not customised, not refunded). */
+    protected static function lines($idOrder)
+    {
         $lines = [];
-        foreach ($db->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'order_detail` WHERE id_order = ' . (int) $order['id_order'] . ' ORDER BY id_order_detail') ?: [] as $d) {
+        foreach (Db::getInstance()->executeS('SELECT * FROM `' . _DB_PREFIX_ . 'order_detail` WHERE id_order = ' . (int) $idOrder . ' ORDER BY id_order_detail') ?: [] as $d) {
             // a customised line (an engraving, a composition) cannot be rebuilt from here
             if (!empty($d['id_customization'])) {
                 continue;
@@ -119,13 +148,33 @@ class SpcReorder extends SpcFeature
                 'name' => (string) $d['product_name'],
             ];
         }
-        $lines = array_values(array_filter($lines, function ($l) { return $l['quantity'] > 0; }));
-        if (!$lines) {
-            return null;
-        }
-        $order['lines'] = $lines;
 
-        return $order;
+        return array_values(array_filter($lines, function ($l) { return $l['quantity'] > 0; }));
+    }
+
+    /**
+     * Whether a line can be bought now: the product exists, is on and for sale, its combination
+     * still exists, and there is enough of it (or it may be ordered without stock).
+     */
+    public static function buyable(array $line)
+    {
+        $product = new Product($line['id_product'], false);
+        if (!Validate::isLoadedObject($product) || !$product->active || !$product->available_for_order) {
+            return false;
+        }
+        $ipa = (int) $line['id_product_attribute'];
+        if ($ipa && !Db::getInstance()->getValue('SELECT 1 FROM `' . _DB_PREFIX_ . 'product_attribute` WHERE id_product_attribute = ' . $ipa . ' AND id_product = ' . (int) $line['id_product'])) {
+            return false;
+        }
+        if (!(int) Configuration::get('PS_STOCK_MANAGEMENT') || !class_exists('StockAvailable')) {
+            return true;
+        }
+        if ((int) StockAvailable::getQuantityAvailableByProduct((int) $line['id_product'], $ipa ?: null) >= (int) $line['quantity']) {
+            return true;
+        }
+
+        return method_exists('Product', 'isAvailableWhenOutOfStock')
+            && (bool) Product::isAvailableWhenOutOfStock(StockAvailable::outOfStock((int) $line['id_product']));
     }
 
     /**

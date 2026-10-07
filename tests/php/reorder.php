@@ -32,6 +32,7 @@ class Tools
     static function getAdminTokenLite($x) { return 'adm'; }
     static function displayDate($d) { return date('d.m.Y', strtotime($d)); }
 }
+class StockAvailable { static function getQuantityAvailableByProduct($p, $a = null) { return isset(Product::$all[$p]) ? Product::$all[$p][2] : 0; } static function outOfStock($p) { return isset(Product::$oos[$p]) ? Product::$oos[$p] : 2; } }
 class Validate { static function isLoadedObject($o) { return is_object($o) && !empty($o->id); } }
 class Link { function getModuleLink($m, $c, $p = [], $s = null) { return "https://shop.test/module/$m/$c"; } function getImageLink($rw, $ids, $type = null) { return "https://shop.test/" . explode('-', $ids)[1] . "-$type/$rw.jpg"; } }
 class ImageType { static function getFormattedName($n) { return $n . '_default'; } }
@@ -61,8 +62,9 @@ class Currency { public $iso_code; function __construct($id) { $this->iso_code =
 /** The shop's products: id => [active, available_for_order, stock] */
 class Product
 {
-    static $all = [];
+    static $all = [], $oos = [];
     public $id, $active, $available_for_order;
+    static function isAvailableWhenOutOfStock($v) { return (int) $v === 1; }
     static function getTaxCalculationMethod($idCustomer = null) { return 0; }
     function __construct($id, $full = false, $lang = null) { if (isset(self::$all[$id])) { $this->id = $id; $this->active = self::$all[$id][0]; $this->available_for_order = self::$all[$id][1]; } }
 }
@@ -153,6 +155,13 @@ $db->execute("INSERT INTO rot_order_detail (id_order, product_id, product_attrib
     (102, 7, 0, 2, 0, 'Kimchi klasyczne', 0), (102, 8, 40, 1, 0, 'Zakwas <b>buraczany</b> - 1 l', 0), (102, 9, 0, 3, 3, 'Refunded', 0),
     (102, 10, 0, 1, 0, 'Grawerowany słoik', 77), (102, 11, 0, 1, 0, 'Pierogi (sold out)', 0), (102, 12, 0, 1, 0, 'Old product', 0), (102, 13, 0, 4, 0, 'Kefir', 0)");
 $db->execute('INSERT INTO rot_product_attribute VALUES (40, 8)');
+// customer 8: the latest order has a sold-out product, the one before can be bought whole
+// customer 9: no order is whole; the one with more still for sale wins
+$db->execute("INSERT INTO rot_orders VALUES (200, 8, 1, 1, '2026-10-06 10:00:00', 40, 1, 3, 11, 11), (199, 8, 1, 1, '2026-09-20 10:00:00', 30, 1, 3, 11, 11),
+    (300, 9, 1, 1, '2026-10-06 10:00:00', 40, 1, 3, 11, 11), (299, 9, 1, 1, '2026-10-01 10:00:00', 30, 1, 3, 11, 11), (298, 9, 1, 1, '2026-09-01 10:00:00', 30, 1, 3, 11, 11)");
+$db->execute("INSERT INTO rot_order_detail (id_order, product_id, product_attribute_id, product_quantity, product_name) VALUES
+    (200, 7, 0, 1, 'Kimchi klasyczne'), (200, 11, 0, 1, 'Pierogi (sold out)'), (199, 7, 0, 2, 'Kimchi klasyczne'), (199, 13, 0, 1, 'Kefir'),
+    (300, 12, 0, 1, 'Old product'), (300, 11, 0, 1, 'Pierogi (sold out)'), (299, 7, 0, 1, 'Kimchi klasyczne'), (299, 12, 0, 1, 'Old product'), (298, 8, 41, 1, 'Gone combination')");
 Product::$all = [7 => [1, 1, 10], 8 => [1, 1, 10], 9 => [1, 1, 10], 10 => [1, 1, 10], 11 => [1, 1, 0], 12 => [0, 1, 10], 13 => [1, 1, 10]];
 Address::$all = [11 => [5, 0, ['address1' => 'ul. Długa 5', 'postcode' => '00-001', 'city' => 'Warszawa']], 12 => [5, 0, ['address1' => 'Firma Sp. z o.o.', 'address2' => 'ul. Krótka 1', 'postcode' => '30-002', 'city' => 'Kraków']], 13 => [6, 0], 14 => [5, 1]];
 Carrier::$all = [3 => [3, 1, 1], 8 => [3, 0, 1], 9 => [9, 0, 1]];  // carrier 3 was edited: now 8
@@ -164,6 +173,16 @@ $o = SpcReorder::lastOrder(5, 1);
 ok($o['id_order'] == 102, 'the last valid order (a newer cancelled one does not count)');
 ok(array_column($o['lines'], 'name') === ['Kimchi klasyczne', 'Zakwas <b>buraczany</b> - 1 l', 'Pierogi (sold out)', 'Old product', 'Kefir'], 'its lines, without what was refunded or customised');
 ok(SpcReorder::lastOrder(5, 2) === null, 'another shop: its own orders only');
+Configuration::$v['PS_STOCK_MANAGEMENT'] = 1;
+$o8 = SpcReorder::lastOrder(8, 1);
+ok($o8['id_order'] == 199 && $o8['earlier'] === true && $o8['available'] === 2, 'a product of the latest order sold out: the order before it, which can be bought whole');
+$o9 = SpcReorder::lastOrder(9, 1);
+ok($o9['id_order'] == 299 && $o9['available'] === 1, 'no order whole: the one with the most products still for sale (switched off, sold out and gone combinations do not count)');
+Product::$oos = [11 => 1];
+ok(SpcReorder::lastOrder(8, 1)['id_order'] == 200, 'sold out but orderable without stock: the latest order again');
+Product::$oos = [];
+$o5 = SpcReorder::lastOrder(5, 1);
+ok($o5['id_order'] == 102 && $o5['earlier'] === false, 'with no better order, the latest one (its missing products are left out when it is added)');
 
 // ---------- into the cart
 $ctx = Context::getContext();

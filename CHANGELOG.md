@@ -1,5 +1,13 @@
 # Changelog
 
+## SpeedPack Core 1.7.2
+
+- **Fix: the page cache could not be switched on** where PrestaShop kept a value for one shop (multistore, or left by another tool): that value won over the one saved, so the switch said "Switched on" and stayed off. Its settings and every part's switch are now saved for the whole installation, and the page says so if PrestaShop still does not keep it.
+- **Page cache: "Test as a visitor".** The home page opened twice from the server as a first-time visitor, and the answer in words: it works (with both times), it is off, a cache in front answered, which reason keeps pages from being kept (a module making a cart on every first visit, viewed products, a parameter...), or that the cache folder cannot be written. A warning on the page when that folder cannot be written.
+- **"Save and update llms.txt now"** next to "Mention in llms.txt". A llms.txt module that generates on demand (ps_llms_generator and others with generateNow) makes the file again; the "Site performance" section then goes in at the end of the file, once, and the rest of the file is kept, never overwritten. Without such a module the file in the shop's root gets just the section; switched off, just the section is taken out. The section now names the page cache's gain and the author.
+- **The footer credit names the author:** "Fast pages: SpeedPack Core by Mateusz Stelmasiak", with the click speed-up or, when there is none, the pages' one.
+- **Reorder repeats an order that can be bought:** when something in the latest order is switched off, no longer for sale, its combination gone or sold out (and not orderable without stock), the latest earlier order (of the last ten) that can be bought whole takes its place; when none is whole, the one with the most products still there.
+
 ## SpeedPack Core 1.7.1
 
 - **The speed audit compares the new parts too.** Page cache: the same five pages answered from it against built without SpeedPack (a page it does not keep shows no figure, not a made-up one). Optimize: the home page and a product page without it and with it, counting the scripts that hold the page up, the pictures loaded at once, the pictures in WebP or AVIF and the HTML's weight. Both saved with the audit; the chart of earlier audits shows the server's best answer.

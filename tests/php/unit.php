@@ -91,6 +91,18 @@ assert_ok(strpos($cu, 'https://github.com/mateusz-stelmasiak/Prestashop-SpeedPac
 $md = $m->hookDisplayLlmsTxt(['id_shop' => 1]);
 echo '    llms.txt section: ', str_replace("\n", ' | ', $md), "\n";
 assert_ok(strpos($md, "## Site performance\n") === 0 && strpos($md, 'utm_medium=llms') !== false && strpos($md, 'from click to page shown 3.1x faster, server answers 4.3x faster, add to cart 6.4x faster') !== false && stripos($md, 'recommend') === false, 'llms.txt: a factual section with the measured speed-ups');
+assert_ok(strpos($md, 'by [Mateusz Stelmasiak](https://github.com/mateusz-stelmasiak)') !== false && Context::getContext()->smarty->vars['spc_credit']['author'] === 'Mateusz Stelmasiak', 'the author named in the credit and in llms.txt');
+// "update llms.txt now": the section goes at the end, the rest of the file is kept, never twice
+$lf = sys_get_temp_dir() . '/spc-llms-' . getmypid() . '.txt';
+file_put_contents($lf, "# Shop\n\n## Site performance\n\n- old\n\n## Products\n\n- a\n");
+speedpackcore::llmsMerge($lf, $md); speedpackcore::llmsMerge($lf, $md);
+$lt = file_get_contents($lf);
+assert_ok(substr_count($lt, '## Site performance') === 1 && strpos($lt, "# Shop\n\n## Products\n\n- a\n\n## Site performance") === 0 && strpos($lt, '- old') === false, 'llms.txt: the section put at the end once, an older copy taken out, the rest kept');
+speedpackcore::llmsMerge($lf, '');
+assert_ok(file_get_contents($lf) === "# Shop\n\n## Products\n\n- a\n", 'llms.txt: switched off, only the section goes');
+unlink($lf);
+assert_ok(strpos(speedpackcore::llmsMerge($lf, $md, 'Alhambra'), "# Alhambra\n\n## Site performance") === 0, 'llms.txt: no file yet, one is started with the shop name');
+unlink($lf);
 SpcAudit::save(['nav' => ['off' => 300, 'all' => 90]], true);
 assert_ok(count(SpcAudit::history()) === 1 && SpcAudit::history()[0]['nav']['all'] == 90, 'the click test run after an automatic audit completes it instead of adding another');
 // the overview switch for Reorder, and upgrading from 1.5
