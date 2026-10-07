@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.7.5
+
+- **Fix: a blank page after a menu tap on phones.** After InstantNav swaps the page in, it now makes sure the page shows: when the swap is done and once more a moment later, it undoes what a theme or module left hiding it (the phone menu hiding `#wrapper` and `#footer`, a fade cut short), and if the content still does not show (a stylesheet keeps it hidden), the page loads normally. A swapped page is never left blank.
+
 ## SpeedPack Core 1.7.4
 
 - **The footer credit sits at the very bottom of the footer**, across its whole width, instead of among the footer's columns (displayFooter is one of them; the line moves itself to the end).

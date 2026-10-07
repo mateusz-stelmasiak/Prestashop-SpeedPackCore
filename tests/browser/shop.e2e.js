@@ -71,6 +71,33 @@ const ok = (c, what) => { console.log((c ? 'ok  ' : 'FAIL: ') + what); if (!c) f
   await m.tap('#menu-icon');
   ok(await m.evaluate(() => document.getElementById('mobile_top_menu_wrapper').style.display === 'block'), 'phone: the menu opens again afterwards');
 
+  // a theme or module script that hides the page right after the swap: undone, still swapped
+  await m.goto(BASE + '/pl/');
+  await m.waitForFunction(() => window.instantNavConfig && document.readyState === 'complete');
+  await m.waitForTimeout(300);
+  await m.evaluate(() => {
+    window.__marker = 2;
+    document.addEventListener('instantnav:loaded', () => setTimeout(() => { document.getElementById('wrapper').style.display = 'none'; document.getElementById('footer').style.display = 'none'; }, 150));
+  });
+  await m.tap('#menu-icon');
+  await m.tap('#mobile_top_menu_wrapper a[href="/pl/3-kategoria.html"]');
+  await m.waitForTimeout(1600);
+  const hid = await m.evaluate(() => ({ swapped: window.__marker === 2, shown: getComputedStyle(document.getElementById('wrapper')).display !== 'none' && getComputedStyle(document.getElementById('footer')).display !== 'none' }));
+  ok(hid.swapped && hid.shown, 'phone: a script hiding the page after the swap is undone (no blank screen) ' + JSON.stringify(hid));
+  // a stylesheet that keeps it hidden: the page loads normally instead of staying blank
+  await m.goto(BASE + '/pl/');
+  await m.waitForFunction(() => window.instantNavConfig && document.readyState === 'complete');
+  await m.waitForTimeout(300);
+  await m.evaluate(() => {
+    window.__marker = 3;
+    document.addEventListener('instantnav:loaded', () => { const st = document.createElement('style'); st.textContent = 'body.lock #wrapper{display:none!important}'; document.head.appendChild(st); document.body.classList.add('lock'); });
+  });
+  await m.tap('#menu-icon');
+  await m.tap('#mobile_top_menu_wrapper a[href="/pl/3-kategoria.html"]');
+  await m.waitForTimeout(2200);
+  const css = await m.evaluate(() => ({ reloaded: window.__marker !== 3, path: location.pathname, shown: getComputedStyle(document.getElementById('wrapper')).display !== 'none' }));
+  ok(css.reloaded && css.path === '/pl/3-kategoria.html' && css.shown, 'phone: content kept hidden by a stylesheet: loaded normally instead ' + JSON.stringify(css));
+
   ok(errors.length === 0, 'no script errors ' + JSON.stringify(errors));
   await b.close();
   console.log(failed ? failed + ' FAILED' : 'ALL OK');

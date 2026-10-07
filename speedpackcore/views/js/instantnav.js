@@ -1183,6 +1183,37 @@
         }
     }
 
+    /**
+     * The page must show after a swap. A theme or a module may still hide it: Classic's phone
+     * menu hides #wrapper and #footer while it is open, other menus lock the body, a transition
+     * cut short can leave the region faded out. Checked when the swap is done and once more a
+     * moment later (for scripts that react to it): what hides it is undone, and if the content
+     * still does not show, the page loads normally, so it is never left blank.
+     */
+    function ensureShown(url) {
+        ['notifications', 'wrapper', 'footer'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el && el.style.display === 'none') { el.style.display = ''; }
+        });
+        var host = document.querySelector(region);
+        if (!host) { return; }
+        host.classList.remove('in-fading', 'in-out');
+        if (host.style.display === 'none') { host.style.display = ''; }
+        if (host.style.opacity === '0') { host.style.opacity = ''; }
+        var cs = window.getComputedStyle(host);
+        var r = host.getBoundingClientRect();
+        var hidden = cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05 || r.height < 24;
+        var hiddenUp = false;
+        for (var el = host.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+            var ps = window.getComputedStyle(el);
+            if (ps.display === 'none' || parseFloat(ps.opacity) < 0.05) { hiddenUp = true; break; }
+        }
+        if (hidden || hiddenUp) {
+            say('the swapped page did not show (' + (hidden ? 'region' : 'a parent') + ' hidden), loading it normally');
+            window.location.reload();
+        }
+    }
+
     function land(doc, url, push) {
         hideSkeleton();
 
@@ -1211,6 +1242,8 @@
         }).then(function () {
             settle();
             announce(url);
+            ensureShown(url);
+            setTimeout(function () { if (strip(window.location.href) === strip(url)) { ensureShown(url); } }, 700);
         });
 
         var target = sameSite(url);

@@ -97,7 +97,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.7.4';
+        $this->version = '1.7.5';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
