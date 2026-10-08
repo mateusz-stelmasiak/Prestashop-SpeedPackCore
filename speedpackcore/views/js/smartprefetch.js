@@ -444,7 +444,9 @@
         if (!shop || typeof shop.on !== 'function') { return; }
 
         try {
-            shop.on('updateCart', function () {
+            shop.on('updateCart', function (e) {
+                // a kept page asking for this shopper's cart (page cache): nothing changed
+                if (e && e.reason && e.reason.cacheRefresh) { return; }
                 active.postMessage({ type: 'flush' });
                 say('cart changed, stored pages dropped');
             });

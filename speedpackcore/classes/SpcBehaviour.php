@@ -106,7 +106,7 @@ class SpcBehaviour extends SpcFeature
     public function hookActionFrontControllerSetMedia()
     {
         // the speed audit's own requests are never visitors (SpcAudit::off covers this part too)
-        if (!self::enabled() || SpcAudit::parts() !== null) {
+        if (!self::enabled() || SpcAudit::parts() !== null || SpcWarm::isWarmRequest()) {
             return;
         }
         $controller = $this->context->controller;

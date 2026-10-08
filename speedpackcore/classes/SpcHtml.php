@@ -192,7 +192,9 @@ class SpcHtml
             }
             $attrs = $s[1][0];
             $type = preg_match('#\stype\s*=\s*["\']?([^"\'\s>]+)#i', ' ' . $attrs, $t) ? strtolower($t[1]) : '';
-            if (($type !== '' && preg_match(self::DATA_TYPES, $type)) || $type === 'module') {
+            // data blocks, modules and scripts of other kinds (delayed ones: spc/delay) stay as they are
+            if (($type !== '' && preg_match(self::DATA_TYPES, $type)) || $type === 'module'
+                || ($type !== '' && !in_array($type, ['text/javascript', 'application/javascript', 'application/ecmascript', 'text/ecmascript'], true))) {
                 continue;
             }
             $external = (bool) preg_match('#\ssrc\s*=#i', ' ' . $attrs);
@@ -216,6 +218,79 @@ class SpcHtml
         }
         for ($i = count($edits) - 1; $i >= 0; --$i) {
             $html = substr_replace($html, $edits[$i][1], $edits[$i][0], $edits[$i][2]);
+        }
+
+        return $html;
+    }
+
+    /**
+     * Third-party scripts (trackers, chats, ads) wait for the visitor: those whose address or code
+     * holds one of $patterns become type="spc/delay" (an address kept in data-spc-src) and a small
+     * loader runs them, in the page's order, on the first touch, key, scroll or pointer move, or
+     * after $timeout seconds (0: only then). When Google's tag is among them, a stand-in gtag()
+     * and dataLayer come first in the head, so a cookie banner calling gtag() before the visitor
+     * moves keeps working (its calls wait in dataLayer, as Google's own snippet would keep them).
+     */
+    public static function delay($html, array $patterns, $timeout = 0)
+    {
+        $patterns = array_values(array_filter(array_map('trim', $patterns), 'strlen'));
+        $end = strripos($html, '</body>');
+        if (!$patterns || $end === false) {
+            return $html;
+        }
+        if (!preg_match_all('#<script\b([^>]*)>(.*?)</script\s*>#is', $html, $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER)) {
+            return $html;
+        }
+        $hit = function ($text) use ($patterns) {
+            foreach ($patterns as $p) {
+                if (stripos($text, $p) !== false) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        $edits = [];
+        $google = false;
+        foreach ($m as $s) {
+            if ($s[0][1] > $end) {
+                break;
+            }
+            $attrs = $s[1][0];
+            $type = preg_match('#\stype\s*=\s*["\']?([^"\'\s>]+)#i', ' ' . $attrs, $t) ? strtolower($t[1]) : '';
+            if ($type !== '' && !in_array($type, ['text/javascript', 'application/javascript'], true)) {
+                continue;
+            }
+            $src = preg_match('#\ssrc\s*=\s*(["\'])(.*?)\1#is', ' ' . $attrs, $u) ? $u[2] : (preg_match('#\ssrc\s*=\s*([^\s>]+)#i', ' ' . $attrs, $u) ? $u[1] : '');
+            $code = $s[2][0];
+            if (!($src !== '' ? $hit($src) : (trim($code) !== '' && $hit($code)))) {
+                continue;
+            }
+            $google = $google || preg_match('#googletagmanager|gtag\(|google-analytics#i', $src . $code);
+            $rest = preg_replace('#\s+#', ' ', preg_replace('#\s(type|src|async|defer)(\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?#i', '', ' ' . $attrs));
+            $edits[] = [$s[0][1], '<script type="spc/delay"' . ($src !== '' ? ' data-spc-src="' . htmlspecialchars(html_entity_decode($src, ENT_QUOTES), ENT_QUOTES) . '"' : '') . rtrim($rest) . '>' . $code . '</script>', strlen($s[0][0])];
+        }
+        if (!$edits) {
+            return $html;
+        }
+        for ($i = count($edits) - 1; $i >= 0; --$i) {
+            $html = substr_replace($html, $edits[$i][1], $edits[$i][0], $edits[$i][2]);
+        }
+        $loader = '<script id="spc-delay">(function(){var done=false,ev=["pointerdown","keydown","touchstart","scroll","wheel","mousemove"];'
+            . 'function run(){if(done){return;}done=true;ev.forEach(function(e){window.removeEventListener(e,run,{passive:true});});'
+            . 'var list=[].slice.call(document.querySelectorAll(\'script[type="spc/delay"]\'));'
+            . '(function next(i){if(i>=list.length){return;}var o=list[i],s=document.createElement("script");'
+            . 'for(var k=0;k<o.attributes.length;k++){var a=o.attributes[k];if(a.name!=="type"&&a.name!=="data-spc-src"){s.setAttribute(a.name,a.value);}}'
+            . 'var src=o.getAttribute("data-spc-src");if(src){s.src=src;s.async=false;s.onload=s.onerror=function(){next(i+1);};o.parentNode.replaceChild(s,o);}'
+            . 'else{s.text=o.text;o.parentNode.replaceChild(s,o);next(i+1);}})(0);}'
+            . 'ev.forEach(function(e){window.addEventListener(e,run,{passive:true});});'
+            . ((int) $timeout > 0 ? 'setTimeout(run,' . ((int) $timeout * 1000) . ');' : '')
+            . '})();</script>';
+        $end = strripos($html, '</body>');
+        $html = substr($html, 0, $end) . $loader . substr($html, $end);
+        if ($google && preg_match('#<head\b[^>]*>#i', $html, $h, PREG_OFFSET_CAPTURE)) {
+            $at = $h[0][1] + strlen($h[0][0]);
+            $html = substr($html, 0, $at) . '<script>window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments);};</script>' . substr($html, $at);
         }
 
         return $html;

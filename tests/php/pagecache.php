@@ -19,7 +19,7 @@ class Db
     function getValue($sql) { $r = $this->getRow($sql); return $r ? reset($r) : false; }
     function escape($s) { return substr($this->pdo->quote((string) $s), 1, -1); }
 }
-class Configuration { static $v = []; static function get($k) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } }
+class Configuration { static $v = []; static function get($k) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function updateGlobalValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } }
 class Tools
 {
     static $get = [];
@@ -35,6 +35,7 @@ require SPC_MODULE . '/classes/SpcImages.php';
 require SPC_MODULE . '/classes/SpcHtml.php';
 require SPC_MODULE . '/classes/SpcOptimize.php';
 require SPC_MODULE . '/classes/SpcPageCache.php';
+require SPC_MODULE . '/classes/SpcWarm.php';
 
 $db = Db::getInstance();
 foreach (['spc_pagecache', 'category_product', 'product'] as $t) {
@@ -64,6 +65,7 @@ ok($no('order', $req(), 'page') && $no('cart', $req(), 'page') && $no('search', 
 ok($no('product', $req(['method' => 'POST']), 'method'), 'a POST is never kept');
 ok($no('product', $req(['ajax' => true]), 'ajax'), 'an AJAX request is never kept');
 ok($no('product', $req(['cookies' => ['id_customer' => 5]]), 'visitor') && $no('product', $req(['cookies' => ['id_cart' => 9]]), 'visitor'), 'a signed-in customer or a cart: built live');
+ok(SpcPageCache::key('product', $req(['cookies' => ['id_cart' => 9], 'carts' => true])) === $k && $no('product', $req(['cookies' => ['id_cart' => 9, 'id_customer' => 5], 'carts' => true]), 'visitor') && $no('product', $req(['cookies' => ['id_cart' => 9, 'logged' => 1], 'carts' => true]), 'visitor'), 'shoppers with a cart switched on: a cart alone gets the same kept page, signed in still built live');
 ok($no('product', $req(['cookies' => ['viewed' => '3,4'], 'viewed' => true]), 'viewed') && SpcPageCache::key('product', $req(['cookies' => ['viewed' => '3,4']])) === $k, 'viewed products only matter when that module is on');
 ok($no('product', $req(['uri' => '/pl/7-kimchi.html?preview=1']), 'param') && $no('product', $req(['uri' => '/x?spc_nocache=1']), 'param'), 'a preview or "no cache" in the address: built live');
 ok(SpcPageCache::key('product', $req(['uri' => '/pl/7-kimchi.html?utm_source=fb&gclid=9'])) === $k, 'campaign tags do not make another page');
@@ -99,12 +101,27 @@ $keys['product7'] = $k;
 $s = SpcPageCache::stats(1, time());
 ok($s['pages'] === 6 && $s['bytes'] > 0, 'the figures count the pages kept (' . $s['pages'] . ', the expired one not)');
 
-// --- clearing
+// --- clearing (the pages cleared queued to be warmed again)
+$wasOn = Configuration::get('SPC_PC_ENABLED');
+Configuration::$v['SPC_PC_ENABLED'] = 1;
+SpcWarm::$bases[1] = 'https://shop.test';
+Configuration::$v[SpcWarm::K_QUEUE] = '[]';
 $n = SpcPageCache::productChanged(7);
+$q = SpcWarm::queue();
+sort($q);
+ok($q === ['https://shop.test/pl/', 'https://shop.test/pl/3-kiszonki', 'https://shop.test/pl/7-kimchi.html', 'https://shop.test/pl/brand/2-alhambra'], 'the pages a product change cleared are queued to be warmed again ' . json_encode($q));
 $left = function ($id) use ($keys) { return is_file(SpcPageCache::file($keys[$id])); };
 ok($n === 4 && !$left('product7') && !$left('category3') && !$left('index0') && !$left('manufacturer2'), 'a product changed: its page, its categories, its brand and the home page go (' . $n . ')');
 ok($left('category5') && $left('cms4') && $left('product8'), 'other categories, products and pages stay');
 ok(SpcPageCache::flush() === 3 && !$left('cms4') && !glob(SpcPageCache::folder() . '*/*.html.gz'), 'emptying it removes every page');
+ok(count(SpcWarm::queue()) === 7 && count(array_unique(SpcWarm::queue())) === 7, 'emptying it queues the pages it held, each once');
+$before = SpcWarm::queue();
+ok(SpcWarm::take(2) === array_slice($before, 0, 2) && SpcWarm::queue() === array_slice($before, 2), 'taking pages takes the first ones out of the queue');
+ok(SpcWarm::urlsOf([['url' => '/pl/3-kiszonki?utm_source=fb&page=2&spc_t=9', 'id_shop' => 1], ['url' => 'x', 'id_shop' => 1]]) === ['https://shop.test/pl/3-kiszonki?page=2'], 'a queued address keeps its page, not campaign or audit tags');
+Configuration::$v[SpcWarm::K_ENABLED] = 0;
+ok(SpcWarm::push(['https://shop.test/pl/9-x.html']) === 0, 'warming switched off: nothing is queued');
+Configuration::$v[SpcWarm::K_ENABLED] = 1;
+Configuration::$v['SPC_PC_ENABLED'] = $wasOn;
 SpcPageCache::write($k, $html, ['controller' => 'product', 'id_object' => 7, 'shop' => 1, 'url' => '/x', 'created' => $t0, 'expires' => $t0 + 10]);
 ok(SpcPageCache::purge($t0 + 20) === 1 && !is_file(SpcPageCache::file($k)), 'expired pages are cleared');
 
@@ -205,7 +222,9 @@ ok($h1['x-speedpack-cache'] === 'MISS' && $h2['x-speedpack-cache'] === 'HIT' && 
 list($h3, $b3) = $get('/7-kimchi.html', ['Accept-Encoding: gzip']);
 ok($h3['x-speedpack-cache'] === 'HIT' && isset($h3['content-encoding']) && $h3['content-encoding'] === 'gzip' && gzdecode($b3) === $b1, 'a browser that takes gzip gets the stored gzip as it is');
 list($h4, $b4) = $get('/7-kimchi.html', ['Cookie: ps_id_cart=5']);
-ok($h4['x-speedpack-cache'] === 'BYPASS visitor' && $b4 !== $b1, 'a visitor with a cart gets the page built for them');
+ok($h4['x-speedpack-cache'] === 'HIT cart' && strpos($b4, 'id="spc-cart-refresh"') !== false && str_replace(SpcPageCache::CART_REFRESH, '', $b4) === $b1, 'a shopper with a cart gets the kept page, with their cart asked for on it');
+list($h4b, $b4b) = $get('/7-kimchi.html', ['Cookie: ps_id_cart=5; ps_id_customer=3']);
+ok($h4b['x-speedpack-cache'] === 'BYPASS visitor' && $b4b !== $b1, 'a signed-in customer gets the page built for them');
 list($h5) = $get('/koszyk');
 ok($h5['x-speedpack-cache'] === 'BYPASS page', 'the cart page is never kept');
 list($h6, $b6) = $get('/7-kimchi.html', ['Cookie: spc_audit=x']);

@@ -109,6 +109,24 @@ ok(strlen($mn) < strlen($page) && strpos($mn, "concat('inline-after');") !== fal
 // ---------- all together, on a page with nothing to do
 $plain = '<html><head></head><body><p>x</p></body></html>';
 ok(SpcHtml::lazy($plain) === $plain && SpcHtml::defer($plain) === $plain && SpcHtml::images($plain, $resolve) === $plain, 'a page with nothing to do comes back as it was');
+// --- third-party scripts delayed until the visitor moves
+$tp = '<html><head><title>t</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>'
+    . '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("config","G-1");</script>'
+    . '<script type="application/ld+json">{"x":"gtag("}</script></head><body><script src="/themes/core.js"></script><script>var prestashop={};</script>'
+    . '<script src="https://connect.facebook.net/en_US/fbevents.js" id="fb" async></script><script src="https://js.stripe.com/v3/"></script></body></html>';
+$dl = SpcHtml::delay($tp, ['googletagmanager.com', 'gtag(', 'connect.facebook.net'], 10);
+ok(substr_count($dl, '<script type="spc/delay"') === 3 && strpos($dl, 'data-spc-src="https://www.googletagmanager.com/gtag/js?id=G-1"') !== false && strpos($dl, 'data-spc-src="https://connect.facebook.net/en_US/fbevents.js" id="fb"') !== false, 'trackers by address and by code wait, their other attributes kept');
+ok(strpos($dl, '<script src="/themes/core.js"></script><script>var prestashop={};</script>') !== false && strpos($dl, '<script src="https://js.stripe.com/v3/"></script>') !== false && strpos($dl, '<script type="application/ld+json">{"x":"gtag("}</script>') !== false, 'the shop own scripts, payment and data blocks run as before');
+ok(strpos($dl, '<head><script>window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments);};</script>') !== false, 'a stand-in gtag() first in the head (a cookie banner may call it before the visitor moves)');
+ok(substr_count($dl, 'id="spc-delay"') === 1 && strpos($dl, 'setTimeout(run,10000)') !== false && strpos(SpcHtml::delay($tp, ['connect.facebook.net'], 0), 'setTimeout(run') === false, 'one loader at the end, with the time limit (none for 0)');
+ok(SpcHtml::delay($tp, ['nothing-like-this'], 10) === $tp && SpcHtml::delay($tp, [], 10) === $tp, 'nothing matching: the page as it was');
+$both = SpcHtml::defer($dl);
+ok(substr_count($both, '<script type="spc/delay"') === 3 && strpos($both, '<script defer src="/themes/core.js">') !== false, 'deferring leaves the delayed scripts alone');
+// the loader itself, run in a tiny DOM: delayed scripts recreated in their order
+if (getenv('SPC_HTML_DELAY_OUT')) {
+    file_put_contents(getenv('SPC_HTML_DELAY_OUT'), $dl);
+}
+
 if (getenv('SPC_HTML_OUT')) {
     file_put_contents(getenv('SPC_HTML_OUT'), json_encode(['page' => $page, 'all' => SpcHtml::minify(SpcHtml::critical(SpcHtml::defer(SpcHtml::lazy(SpcHtml::images($page, $resolve))), '#header{background:#123456}', $fp))]));
 }

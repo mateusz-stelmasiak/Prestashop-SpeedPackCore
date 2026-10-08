@@ -34,6 +34,16 @@ class SpcPageCache extends SpcFeature
     public const K_TTL = 'SPC_PC_TTL';
     public const K_PAGES = 'SPC_PC_PAGES';
     public const K_MOBILE = 'SPC_PC_MOBILE';
+    /** shoppers with a cart (not signed in) get kept pages too, their cart refreshed on the page */
+    public const K_CARTS = 'SPC_PC_CARTS';
+
+    /**
+     * Put into a kept page sent to a shopper with a cart: the cart in the header is asked for
+     * again the way PrestaShop's own cart block does it after a change (updateCart), so it shows
+     * this shopper's cart and not the empty one the page was kept with. Sent after the page's
+     * jQuery ready handlers, where the cart block starts listening.
+     */
+    public const CART_REFRESH = '<script id="spc-cart-refresh">(function(){var n=0;function emit(){prestashop.emit("updateCart",{reason:{linkAction:"refresh",cacheRefresh:true},resp:{}});}function go(){if(window.prestashop&&typeof prestashop.emit==="function"&&window.jQuery){jQuery(function(){setTimeout(emit,0);});}else if(n++<100){setTimeout(go,50);}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",go);}else{go();}})();</script>';
 
     /** the pages that may be cached (PrestaShop's controller names) */
     public const PAGES = ['index', 'category', 'product', 'cms', 'manufacturer', 'supplier', 'new-products', 'prices-drop', 'best-sales'];
@@ -59,6 +69,8 @@ class SpcPageCache extends SpcFeature
             && Configuration::updateValue(self::K_TTL, 12)
             && Configuration::updateValue(self::K_PAGES, implode(',', self::PAGES))
             && Configuration::updateValue(self::K_MOBILE, 1)
+            && Configuration::updateValue(self::K_CARTS, 1)
+            && Configuration::updateValue(SpcWarm::K_ENABLED, 1)
             && self::installTable()
             && $this->registerHooks();
     }
@@ -90,7 +102,7 @@ class SpcPageCache extends SpcFeature
     public function uninstall()
     {
         self::flush();
-        foreach ([self::K_ENABLED, self::K_TTL, self::K_PAGES, self::K_MOBILE] as $k) {
+        foreach ([self::K_ENABLED, self::K_TTL, self::K_PAGES, self::K_MOBILE, self::K_CARTS, SpcWarm::K_ENABLED, SpcWarm::K_QUEUE, SpcWarm::K_LOCK, SpcWarm::K_CURSOR] as $k) {
             Configuration::deleteByName($k);
         }
         Db::getInstance()->execute('DROP TABLE IF EXISTS ' . self::table());
@@ -204,6 +216,10 @@ class SpcPageCache extends SpcFeature
             return self::no('ajax');
         }
         foreach (self::PERSONAL as $k) {
+            // a cart alone (not signed in): the page is the same, its cart is refreshed on it
+            if ($k === 'id_cart' && !empty($req['carts'])) {
+                continue;
+            }
             if (!empty($req['cookies'][$k])) {
                 return self::no('visitor');
             }
@@ -272,6 +288,7 @@ class SpcPageCache extends SpcFeature
             'shop' => (int) $context->shop->id,
             'mobile' => method_exists($context, 'isMobile') && $context->isMobile() ? 1 : 0,
             'images' => SpcOptimize::imageFormat(),
+            'carts' => self::cartsKept(),
         ];
     }
 
@@ -304,7 +321,8 @@ class SpcPageCache extends SpcFeature
             return false;
         }
         self::count('hit');
-        self::send($page);
+        $cookie = $context->cookie;
+        self::send($page, $cookie && $cookie->__get('id_cart') ? self::CART_REFRESH : '');
 
         return true;
     }
@@ -327,16 +345,23 @@ class SpcPageCache extends SpcFeature
     }
 
     /** Sends a stored page: gzipped as it is when the browser takes it, plain otherwise. */
-    protected static function send(array $page)
+    protected static function send(array $page, $inject = '')
     {
         list($meta, $gz) = $page;
+        if ($inject !== '') {
+            // this shopper's own part, put in before </body> (the page itself stays as kept)
+            $html = (string) gzdecode($gz);
+            $at = strripos($html, '</body>');
+            $html = $at === false ? $html . $inject : substr($html, 0, $at) . $inject . substr($html, $at);
+            $gz = gzencode($html, 1);
+        }
         while (ob_get_level() > 0) {
             @ob_end_clean();
         }
         $plain = !self::acceptsGzip() || ini_get('zlib.output_compression');
         if (!headers_sent()) {
             header('Content-Type: text/html; charset=utf-8');
-            header('X-SpeedPack-Cache: HIT');
+            header('X-SpeedPack-Cache: HIT' . ($inject !== '' ? ' cart' : ''));
             header('Age: ' . max(0, time() - (int) $meta['created']));
             header('Vary: Accept-Encoding');
             if (!$plain) {
@@ -381,6 +406,14 @@ class SpcPageCache extends SpcFeature
             'url' => isset($_SERVER['REQUEST_URI']) ? substr((string) $_SERVER['REQUEST_URI'], 0, 255) : '',
             'created' => $now, 'expires' => $now + $ttl,
         ]);
+    }
+
+    /** Whether shoppers with a cart get kept pages (on unless switched off). */
+    public static function cartsKept()
+    {
+        $v = Configuration::get(self::K_CARTS);
+
+        return $v === false || (int) $v === 1;
     }
 
     /** Only a complete page with nothing personal in it. */
@@ -457,7 +490,9 @@ class SpcPageCache extends SpcFeature
         if (!$or) {
             return 0;
         }
-        $rows = $db->executeS('SELECT id_entry FROM ' . self::table() . ' WHERE ' . implode(' OR ', $or));
+        $rows = $db->executeS('SELECT id_entry, url, id_shop FROM ' . self::table() . ' WHERE ' . implode(' OR ', $or));
+        // the pages cleared are warmed again in the background (SpcWarm)
+        SpcWarm::push(SpcWarm::urlsOf($rows ?: []));
 
         return self::remove(array_column($rows ?: [], 'id_entry'));
     }
@@ -484,10 +519,11 @@ class SpcPageCache extends SpcFeature
     {
         $db = Db::getInstance();
         try {
-            $rows = $db->executeS('SELECT id_entry FROM ' . self::table() . ($idShop ? ' WHERE id_shop = ' . (int) $idShop : ''));
+            $rows = $db->executeS('SELECT id_entry, url, id_shop FROM ' . self::table() . ($idShop ? ' WHERE id_shop = ' . (int) $idShop : '') . ' ORDER BY created DESC');
         } catch (Exception $e) {
             $rows = [];
         }
+        SpcWarm::push(array_slice(SpcWarm::urlsOf($rows ?: []), 0, SpcWarm::MAX_QUEUE));
         $n = self::remove(array_column($rows ?: [], 'id_entry'));
         // files of a lost index (an interrupted write, a restored database) go too
         if (!$idShop) {
@@ -623,6 +659,8 @@ class SpcPageCache extends SpcFeature
     public function getContent()
     {
         $out = '';
+        $this->context->controller->addCSS($this->module->getPathUri() . 'views/css/optimize.css');
+        $this->context->controller->addJS($this->module->getPathUri() . 'views/js/warm.js');
         self::installTable();
         if (!$this->isRegisteredInHook('actionOutputHTMLBefore')) {
             $this->registerHooks();
@@ -645,6 +683,8 @@ class SpcPageCache extends SpcFeature
                 $saved = self::set(self::K_ENABLED, $want);
                 self::set(self::K_TTL, $ttl);
                 self::set(self::K_MOBILE, Tools::getValue(self::K_MOBILE) ? 1 : 0);
+                self::set(self::K_CARTS, Tools::getValue(self::K_CARTS) ? 1 : 0);
+                self::set(SpcWarm::K_ENABLED, Tools::getValue(SpcWarm::K_ENABLED) ? 1 : 0);
                 self::set(self::K_PAGES, implode(',', $pages ?: self::PAGES));
                 self::flush();
                 $out .= $saved
@@ -663,6 +703,20 @@ class SpcPageCache extends SpcFeature
             'rate' => $stats['rate'],
             'ttl' => (int) Configuration::get(self::K_TTL),
             'test' => $test,
+            'warm' => [
+                'on' => SpcWarm::enabled(),
+                'queued' => count(SpcWarm::queue()),
+                'auto' => function_exists('fastcgi_finish_request'),
+                'url' => AdminController::$currentIndex . '&configure=' . $this->name . '&token=' . Tools::getAdminTokenLite('AdminModules'),
+                'cron' => $this->context->link->getModuleLink($this->name, 'warm', ['key' => SpcWarm::token()], true),
+                'texts' => json_encode([
+                    'planning' => $this->l('Listing the catalogue...'),
+                    'progress' => $this->l('%1$d of %2$d pages warmed'),
+                    'done' => $this->l('%1$d pages warmed: %2$d were built now, %3$d were ready already.'),
+                    'failed' => $this->l('Stopped: %s'),
+                    'off' => $this->l('Switch the page cache on first.'),
+                ]),
+            ],
             'writable' => self::writable(),
             'folder' => self::folder(),
         ]]);
@@ -684,6 +738,8 @@ class SpcPageCache extends SpcFeature
             self::K_ENABLED => (int) self::enabled(),
             self::K_TTL => (int) Configuration::get(self::K_TTL) ?: 12,
             self::K_MOBILE => (int) Configuration::get(self::K_MOBILE),
+            self::K_CARTS => (int) self::cartsKept(),
+            SpcWarm::K_ENABLED => (int) (Configuration::get(SpcWarm::K_ENABLED) === false || (int) Configuration::get(SpcWarm::K_ENABLED) === 1),
         ];
         // a checkbox list: HelperForm reads one value per box (SPC_PC_PAGE_<page>)
         $helper->fields_value['SPC_PC_PAGE'] = '';
@@ -704,6 +760,8 @@ class SpcPageCache extends SpcFeature
                 ['type' => 'checkbox', 'name' => 'SPC_PC_PAGE', 'label' => $this->l('Pages kept'), 'values' => ['query' => array_map(function ($p) use ($names) { return ['id' => $p, 'name' => $names[$p]]; }, self::PAGES), 'id' => 'id', 'name' => 'name']],
                 ['type' => 'text', 'name' => self::K_TTL, 'label' => $this->l('Keep pages for'), 'suffix' => $this->l('hours'), 'class' => 'fixed-width-sm', 'desc' => $this->l('Changes in the back office clear the pages they touch at once; this is for what changes by itself (a price that starts on a date).')],
                 $switch(self::K_MOBILE, $this->l('Separate pages for phones'), $this->l('Keep this on if the theme or a module shows phones a different page.')),
+                $switch(self::K_CARTS, $this->l('Shoppers with a cart too'), $this->l('Shoppers who are not signed in but have something in their cart get the kept pages as well; the cart in the header is asked for again on the page, as PrestaShop does after a change. Switch off if a module shows something about the cart in the page itself (a free delivery bar, cart suggestions).')),
+                $switch(SpcWarm::K_ENABLED, $this->l('Warm pages again'), $this->l('Pages a change clears are opened again in the background after a visitor has their page, so the next one gets them ready (needs PHP-FPM; otherwise use the cron address below).')),
             ],
             'submit' => ['title' => $this->l('Save')],
             'buttons' => [

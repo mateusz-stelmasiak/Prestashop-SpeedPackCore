@@ -1,5 +1,16 @@
 # Changelog
 
+## SpeedPack Core 1.8.0
+
+Three things the competition has, now here too.
+
+- **Page cache for shoppers with a cart.** Visitors who are not signed in but have something in their cart used to get every page built live. They now get the kept page, with their own cart in the header asked for on the page (PrestaShop's `updateCart`, as the cart block does after a change; sent after the page's jQuery ready handlers). Signed-in customers are still built live. A switch ("Shoppers with a cart too"), on by default; answers say `X-SpeedPack-Cache: HIT cart`.
+- **The page cache warms itself again.** The pages a change clears (and those "Clear cache" empties) are queued and opened in the background after a visitor has their page, a few at a time and one warm-up at a time, as a computer and as a phone, with the picture formats browsers take (PHP-FPM; its own requests never count as visitors or start a warm-up). "Warm the whole catalogue now" on the settings page (home, CMS pages, categories, products best sellers first, in every language), and a cron address with a key that works the queue and then the catalogue, about 25 seconds a call.
+- **Delay third-party scripts** (Optimize, off until switched on): scripts whose address or code holds an entry of an editable list (Google tag and Analytics, Facebook pixel, Hotjar, Clarity, Tawk, Smartsupp, LiveChat, Tidio, Crisp, HubSpot, ad tags, TikTok, Pinterest, LinkedIn, Criteo) run at the visitor's first touch, key, scroll or pointer move, or after a time limit (10 s by default, 0 to wait for the visitor only), in the page's order. A stand-in `gtag()` and `dataLayer` keep a cookie banner working before then. Never on the cart, checkout and account pages.
+- SmartPrefetch keeps its stored pages when the page cache only asks for the shopper's cart.
+
+Tests: the cart shopper's key and kept page, the warm queue (filled by a change and by emptying, campaign tags dropped, switched off), delaying in PHP and the loader in Chromium (nothing before the move, all in order at it, once, and at the time limit).
+
 ## SpeedPack Core 1.7.5
 
 - **Fix: a blank page after a menu tap on phones.** After InstantNav swaps the page in, it now makes sure the page shows: when the swap is done and once more a moment later, it undoes what a theme or module left hiding it (the phone menu hiding `#wrapper` and `#footer`, a fade cut short), and if the content still does not show (a stylesheet keeps it hidden), the page loads normally. A swapped page is never left blank.

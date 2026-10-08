@@ -36,6 +36,12 @@ class SpcOptimize extends SpcFeature
     public const K_CRITICAL = 'SPC_OPT_CRITICAL';
     public const K_MINIFY = 'SPC_OPT_MINIFY';
     public const K_HEADERS = 'SPC_OPT_HEADERS';
+    public const K_DELAY = 'SPC_OPT_DELAY';
+    public const K_DELAY_LIST = 'SPC_OPT_DELAY_LIST';
+    public const K_DELAY_TIMEOUT = 'SPC_OPT_DELAY_TIMEOUT';
+
+    /** what is delayed by default: trackers, ad tags and chat widgets (by address or code) */
+    public const DELAY_DEFAULT = "googletagmanager.com\ngoogle-analytics.com\ngtag(\nconnect.facebook.net\nfbq(\nhotjar.com\nclarity.ms\ntawk.to\nsmartsupp.com\nlivechatinc.com\ntidio.co\ncrisp.chat\nhs-scripts.com\ndoubleclick.net\ngoogleadservices.com\nanalytics.tiktok.com\nttq.load\npintrk\nsnap.licdn.com\ncriteo";
 
     /** pages with critical CSS of their own */
     public const CRITICAL_PAGES = ['index', 'category', 'product', 'cms'];
@@ -48,7 +54,7 @@ class SpcOptimize extends SpcFeature
 
     protected static function defaults()
     {
-        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0];
+        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0, self::K_DELAY => 0];
     }
 
     public function install()
@@ -72,7 +78,7 @@ class SpcOptimize extends SpcFeature
     public function uninstall()
     {
         self::headers(false);
-        foreach (array_keys(self::defaults()) as $k) {
+        foreach (array_merge(array_keys(self::defaults()), [self::K_DELAY_LIST, self::K_DELAY_TIMEOUT]) as $k) {
             Configuration::deleteByName($k);
         }
         foreach (self::CRITICAL_PAGES as $p) {
@@ -149,6 +155,13 @@ class SpcOptimize extends SpcFeature
         $noDefer = false;
         foreach (self::NO_DEFER as $p) {
             $noDefer = $noDefer || $page === $p || ($p === 'module-' && strpos($page, 'module-') === 0);
+        }
+        // third-party scripts wait for the visitor (not on the cart, checkout and account pages,
+        // where a conversion tag must run with the page)
+        if (self::on(self::K_DELAY) && !$noDefer) {
+            $list = (string) Configuration::get(self::K_DELAY_LIST);
+            $t = Configuration::get(self::K_DELAY_TIMEOUT);
+            $html = SpcHtml::delay($html, preg_split('/\R/', $list !== '' ? $list : self::DELAY_DEFAULT), $t === false ? 10 : (int) $t);
         }
         if (self::on(self::K_DEFER) && !$noDefer) {
             $html = SpcHtml::defer($html);
@@ -439,7 +452,7 @@ NG;
         if (!$this->isRegisteredInHook('actionOutputHTMLBefore') || !$this->isRegisteredInHook('actionWatermark')) {
             $this->registerHooks();
         }
-        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DEFER, self::K_CRITICAL, self::K_MINIFY, self::K_HEADERS];
+        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DEFER, self::K_DELAY, self::K_CRITICAL, self::K_MINIFY, self::K_HEADERS];
         if (Tools::isSubmit('submitSpcOptimize')) {
             $q = (int) Tools::getValue(self::K_QUALITY);
             if ($q < 40 || $q > 95) {
@@ -449,6 +462,9 @@ NG;
                     Configuration::updateValue($k, Tools::getValue($k) ? 1 : 0);
                 }
                 Configuration::updateValue(self::K_QUALITY, $q);
+                $list = trim(str_replace("\r", '', (string) Tools::getValue(self::K_DELAY_LIST)));
+                Configuration::updateValue(self::K_DELAY_LIST, $list === trim(self::DELAY_DEFAULT) ? '' : $list);
+                Configuration::updateValue(self::K_DELAY_TIMEOUT, max(0, min(60, (int) Tools::getValue(self::K_DELAY_TIMEOUT))));
                 $headers = self::enabled() && self::on(self::K_HEADERS);
                 if (!self::headers($headers)) {
                     Configuration::updateValue(self::K_HEADERS, self::headersWritten() ? 1 : 0);
@@ -512,6 +528,9 @@ NG;
             $helper->fields_value[$k] = self::on($k) ? 1 : 0;
         }
         $helper->fields_value[self::K_QUALITY] = (int) Configuration::get(self::K_QUALITY) ?: 82;
+        $helper->fields_value[self::K_DELAY_LIST] = (string) Configuration::get(self::K_DELAY_LIST) !== '' ? (string) Configuration::get(self::K_DELAY_LIST) : self::DELAY_DEFAULT;
+        $t = Configuration::get(self::K_DELAY_TIMEOUT);
+        $helper->fields_value[self::K_DELAY_TIMEOUT] = $t === false ? 10 : (int) $t;
 
         return $out . $helper->generateForm([['form' => [
             'id_form' => 'spc-optimize',
@@ -524,6 +543,9 @@ NG;
                 $switch(self::K_LAZY, $this->l('Lazy loading'), $this->l('Pictures and videos below the top of the page load as they come into view; the main product picture is asked for first.')),
                 $switch(self::K_CRITICAL, $this->l('Critical CSS'), $this->l('The CSS for the top of the page inline, the rest loaded without holding up the first paint. Made with "Make critical CSS" above; used only while the theme stylesheets stay as they were.')),
                 $switch(self::K_DEFER, $this->l('Defer scripts'), $this->l('Scripts at the end of the page wait for it, in their order. Not on the cart, checkout and account pages. Check the shop after switching it on: a module that writes into the page while it loads may need it off.')),
+                $switch(self::K_DELAY, $this->l('Delay third-party scripts'), $this->l('Trackers, ad tags and chat widgets (the list below) run when the visitor first touches, scrolls or moves the pointer, or after the time below, instead of while the page loads: the page is ready sooner. Not on the cart, checkout and account pages. A cookie banner calling gtag() keeps working.')),
+                ['type' => 'textarea', 'name' => self::K_DELAY_LIST, 'label' => $this->l('Scripts to delay'), 'rows' => 6, 'desc' => $this->l('One per line: a part of the script address or of its code. Never put the cookie banner, payment or the shop own scripts here.')],
+                ['type' => 'text', 'name' => self::K_DELAY_TIMEOUT, 'label' => $this->l('Run them anyway after'), 'suffix' => $this->l('s'), 'class' => 'fixed-width-sm', 'desc' => $this->l('0 to wait for the visitor only. 10 keeps visits that never move counted in analytics.')],
                 $switch(self::K_MINIFY, $this->l('Minify HTML'), $this->l('Comments and runs of spaces out of the page (never in scripts, styles, pre or text areas).')),
                 $switch(self::K_HEADERS, $this->l('Server headers'), self::server() === 'nginx' ? $this->l('This shop runs on nginx: copy the lines shown above into its configuration instead.') : $this->l('Writes a marked block to .htaccess (Apache, LiteSpeed): browser caching for WebP, AVIF and fonts, combined CSS and JS kept a year, gzip and Brotli. A copy of the file is kept as .htaccess.speedpackcore.bak.')),
             ],

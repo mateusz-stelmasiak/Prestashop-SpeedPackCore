@@ -86,6 +86,7 @@ if command -v node >/dev/null && node -e "require('$PW')" 2>/dev/null && [ -f "$
     J=$(port); JOURNEY_HTML="$SPC_JOURNEY_HTML" JOURNEY_CART_HTML="$SPC_JOURNEY_CART_HTML" serve "$J" python3 browser/shop.py "$J" "$MOD" "$WORK/admin.html" && step "browser: path on orders and carts" node browser/journey.e2e.js "$J"
   fi
   mkdir -p "$WORK/opt" && php browser/render-opt.php "$WORK/opt" && step "browser: Optimize (critical CSS, deferred scripts)" node browser/optimize.e2e.js "$WORK/opt" "$MOD"
+  step "browser: third-party scripts delayed until the visitor moves" node browser/delay.e2e.js "$MOD"
   if [ $DB = 1 ] && [ -f "$SPC_BH_MESSAGES" ]; then step "php: Behaviour, browser messages stored" php php/behaviour-replay.php "$SPC_BH_MESSAGES"; fi
 else skipped "browser tests" "no node/playwright (set SPC_PLAYWRIGHT) or no audit vars"; fi
 

@@ -32,5 +32,15 @@
   {if $spc_pc.enabled && !$spc_pc.writable}
     <div class="alert alert-danger">{l s='The page cache folder cannot be written:' mod='speedpackcore'} <code>{$spc_pc.folder|escape:'html':'UTF-8'}</code></div>
   {/if}
+  {if $spc_pc.enabled}
+    <div class="spc-warm" id="spc-warm" data-url="{$spc_pc.warm.url|escape:'html':'UTF-8'}" data-texts="{$spc_pc.warm.texts|escape:'html':'UTF-8'}">
+      <p>
+        <button type="button" class="btn btn-default" data-spc-warm><i class="icon-fire"></i> {l s='Warm the whole catalogue now' mod='speedpackcore'}</button>
+        <span class="spc-warm-state" data-spc-warm-state>{if $spc_pc.warm.on}{if $spc_pc.warm.queued}{l s='Pages waiting to be warmed:' mod='speedpackcore'} {$spc_pc.warm.queued|intval}{elseif $spc_pc.warm.auto}{l s='Cleared pages are warmed again automatically.' mod='speedpackcore'}{/if}{/if}</span>
+      </p>
+      <div class="spc-warm-bar" data-spc-warm-bar hidden><span></span></div>
+      <p class="help-block">{l s='Cron (warms what was cleared, then the catalogue, about 25 seconds a call; every 5 to 15 minutes):' mod='speedpackcore'}<br><code>{$spc_pc.warm.cron|escape:'html':'UTF-8'}</code>{if !$spc_pc.warm.auto}<br>{l s='This server cannot warm pages after a visit (no PHP-FPM), so use the cron address.' mod='speedpackcore'}{/if}</p>
+    </div>
+  {/if}
   <p class="help-block">{l s='Check it from a private window: the answer of a kept page carries the header X-SpeedPack-Cache: HIT (MISS when it was built, BYPASS with the reason when it may not be kept).' mod='speedpackcore'}</p>
 </div>

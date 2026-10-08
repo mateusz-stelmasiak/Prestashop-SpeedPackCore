@@ -21,3 +21,9 @@
 /* the shop pages critical CSS is read from: laid out at full size, out of sight */
 .spc-opt-frame { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; }
 .spc-opt-frame iframe { border: 0; }
+
+/* the page cache's warm-up */
+.spc-warm { margin: 12px 0; }
+.spc-warm-state { margin-left: 10px; color: #6c868e; }
+.spc-warm-bar { height: 6px; margin: 4px 0 10px; border-radius: 3px; background: #eef1f3; overflow: hidden; }
+.spc-warm-bar span { display: block; width: 0; height: 100%; background: #25b9d7; transition: width .3s; }
