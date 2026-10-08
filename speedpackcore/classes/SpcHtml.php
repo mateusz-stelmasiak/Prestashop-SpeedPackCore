@@ -147,6 +147,8 @@ class SpcHtml
                 if (!preg_match('#\sfetchpriority\s*=#i', $tag)) {
                     $new = preg_replace('#^<img\b#i', '<img fetchpriority="high"', $new);
                 }
+                // a theme that marks the main picture lazy holds back the largest paint (LCP)
+                $new = preg_replace('#\sloading\s*=\s*(["\']?)lazy\1#i', ' loading="eager"', $new);
             } elseif ($pos >= $content && !preg_match('#\sloading\s*=#i', $tag) && !preg_match('#\sfetchpriority\s*=\s*["\']?high#i', $tag)) {
                 if ($name === 'iframe') {
                     $new = preg_replace('#^<iframe\b#i', '<iframe loading="lazy"', $tag);
@@ -318,12 +320,14 @@ class SpcHtml
     }
 
     /** What the critical CSS was made for: the head's stylesheets (combined files change name with their content). */
-    public static function fingerprint(array $hrefs)
+    public static function fingerprint(array $hrefs, $withQuery = false)
     {
-        $norm = array_map(function ($h) {
+        // the files, not their version numbers (?v=…): a module update that bumps one would turn
+        // the critical CSS off until made again (1.7.x counted them: $withQuery)
+        $norm = array_map(function ($h) use ($withQuery) {
             $p = parse_url($h);
 
-            return (isset($p['path']) ? $p['path'] : '') . (isset($p['query']) ? '?' . $p['query'] : '');
+            return (isset($p['path']) ? $p['path'] : '') . ($withQuery && isset($p['query']) ? '?' . $p['query'] : '');
         }, $hrefs);
 
         return sha1(implode('|', $norm));
@@ -337,7 +341,8 @@ class SpcHtml
     public static function critical($html, $css, $fingerprint)
     {
         $sheets = self::stylesheets($html);
-        if (trim((string) $css) === '' || !$sheets || self::fingerprint(array_column($sheets, 'href')) !== $fingerprint) {
+        $hrefs = array_column($sheets, 'href');
+        if (trim((string) $css) === '' || !$sheets || (self::fingerprint($hrefs) !== $fingerprint && self::fingerprint($hrefs, true) !== $fingerprint)) {
             return $html;
         }
         $css = str_ireplace('</style', '<\/style', $css);
@@ -354,6 +359,118 @@ class SpcHtml
         }
 
         return $html;
+    }
+
+    /* ------------------------------------------------------------------ *
+     *  Layout shift, fonts, CDN
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Pictures without a width and a height get them, from $sizeOf(url) => [w, h] or null, so the
+     * browser keeps their room before they arrive (no layout shift, CLS). A rule in the head keeps
+     * their height following their width (height: auto), so a picture shown smaller keeps its
+     * shape.
+     */
+    public static function dimensions($html, callable $sizeOf)
+    {
+        $added = false;
+        $html = self::outsideBlocks($html, self::bodyStart($html), function ($part) use ($sizeOf, &$added) {
+            return preg_replace_callback('#<img\b[^>]*>#i', function ($m) use ($sizeOf, &$added) {
+                $tag = $m[0];
+                if (preg_match('#\swidth\s*=#i', $tag) || preg_match('#\sheight\s*=#i', $tag)) {
+                    return $tag;
+                }
+                $src = preg_match('#\s(?:data-src|src)\s*=\s*(["\'])(.*?)\1#i', $tag, $u) ? html_entity_decode($u[2], ENT_QUOTES) : '';
+                $size = $src !== '' ? $sizeOf($src) : null;
+                if (!$size || (int) $size[0] < 1 || (int) $size[1] < 1) {
+                    return $tag;
+                }
+                $added = true;
+
+                return preg_replace('#^<img\b#i', '<img width="' . (int) $size[0] . '" height="' . (int) $size[1] . '" data-spc-dim', $tag);
+            }, $part);
+        });
+        if ($added && preg_match('#</head>#i', $html, $h, PREG_OFFSET_CAPTURE)) {
+            $html = substr_replace($html, '<style id="spc-dim">img[data-spc-dim]{height:auto}</style>', $h[0][1], 0);
+        }
+
+        return $html;
+    }
+
+    /**
+     * Fonts that do not hold the text back: Google Fonts asked with display=swap and their two
+     * servers connected to early; with critical CSS, the WOFF2 files its @font-face rules use
+     * preloaded (at most $preload), and those rules made font-display: swap.
+     */
+    public static function fonts($html, $preload = 2)
+    {
+        $google = false;
+        $html = preg_replace_callback('#<link\b[^>]*href\s*=\s*(["\'])(https?:)?//fonts\.googleapis\.com/[^"\']*\1[^>]*>#i', function ($m) use (&$google) {
+            $google = true;
+
+            return stripos($m[0], 'display=') !== false ? $m[0] : preg_replace('#(href\s*=\s*["\'][^"\']*)(["\'])#i', '$1&amp;display=swap$2', $m[0], 1);
+        }, $html);
+        $head = '';
+        if ($google && stripos($html, 'preconnect" href="https://fonts.gstatic.com') === false) {
+            $head .= '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+        }
+        if (preg_match('#<style id="spc-critical">(.*?)</style>#is', $html, $c, PREG_OFFSET_CAPTURE)) {
+            $css = $c[1][0];
+            $files = [];
+            $swapped = preg_replace_callback('#@font-face\s*\{([^}]*)\}#i', function ($f) use (&$files) {
+                if (preg_match_all('#url\(\s*["\']?([^"\')]+\.woff2)(\?[^"\')]*)?["\']?\s*\)#i', $f[1], $u)) {
+                    foreach ($u[1] as $k => $file) {
+                        $files[] = $file . $u[2][$k];
+                    }
+                }
+
+                return stripos($f[1], 'font-display') !== false ? $f[0] : '@font-face{font-display: swap; ' . trim($f[1]) . '}';
+            }, $css);
+            $html = substr_replace($html, $swapped, $c[1][1], strlen($css));
+            foreach (array_slice(array_values(array_unique($files)), 0, (int) $preload) as $file) {
+                $head .= '<link rel="preload" href="' . htmlspecialchars($file, ENT_QUOTES) . '" as="font" type="font/woff2" crossorigin>';
+            }
+        }
+        if ($head !== '' && preg_match('#<head\b[^>]*>#i', $html, $h, PREG_OFFSET_CAPTURE)) {
+            $html = substr_replace($html, $head, $h[0][1] + strlen($h[0][0]), 0);
+        }
+
+        return $html;
+    }
+
+    /**
+     * The shop's static files (pictures, theme and module CSS, JS, fonts) served from a CDN:
+     * their addresses on $base (or starting at the root) move to $cdn, in attributes and inline
+     * style url()s, never inside scripts (their addresses are for the shop's AJAX).
+     */
+    public static function cdn($html, $base, $cdn)
+    {
+        $base = rtrim((string) $base, '/');
+        $cdn = rtrim((string) $cdn, '/');
+        if ($cdn === '' || $base === '' || !preg_match('#^https?://#i', $cdn)) {
+            return $html;
+        }
+        $host = preg_quote(preg_replace('#^https?:#i', '', $base), '#');
+        // fonts stay on the shop's own address (a CDN would need CORS for them, and the preloaded
+        // copy would not be the one the CSS asks for)
+        $re = '#(["\'\s,(=])(?:(?:https?:)?' . $host . ')?(/(?:(?:img|themes|modules|js|upload)/[^"\'\s,)<>]+?\.(?:jpe?g|png|gif|webp|avif|svg|ico|css|js|mp4|webm)'
+            . '|(?:[a-z]{2}/)?\d+(?:-[a-z0-9_]+)?/[a-z0-9_-]+\.(?:jpe?g|png|gif|webp|avif)|c/[a-z0-9_-]+\.(?:jpe?g|png|gif|webp|avif))(?:\?[^"\'\s,)<>]*)?)(?=["\'\s,)<>])#i';
+
+        // a script's own address (its opening tag only: what it says inside stays)
+        $html = preg_replace_callback('#<script\b[^>]*\ssrc\s*=[^>]*>#i', function ($t) use ($re, $cdn) {
+            return preg_replace($re, '$1' . $cdn . '$2', $t[0]);
+        }, $html);
+
+        return self::outsideBlocks($html, 0, function ($part) use ($re, $cdn) {
+            return preg_replace_callback('#<(?:img|source|link|video|audio)\b[^>]*>|\sstyle\s*=\s*(["\']).*?\1#is', function ($t) use ($re, $cdn) {
+                // a link that is not a stylesheet, icon or preload is a page: left alone
+                if (preg_match('#^<link\b#i', $t[0]) && !preg_match('#\srel\s*=\s*["\']?[^"\'>]*(stylesheet|icon|preload|apple-touch-icon)#i', $t[0])) {
+                    return $t[0];
+                }
+
+                return preg_replace($re, '$1' . $cdn . '$2', $t[0]);
+            }, $part);
+        });
     }
 
     /* ------------------------------------------------------------------ *

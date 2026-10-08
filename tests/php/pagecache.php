@@ -36,6 +36,7 @@ require SPC_MODULE . '/classes/SpcHtml.php';
 require SPC_MODULE . '/classes/SpcOptimize.php';
 require SPC_MODULE . '/classes/SpcPageCache.php';
 require SPC_MODULE . '/classes/SpcWarm.php';
+require SPC_MODULE . '/classes/SpcCloudflare.php';
 
 $db = Db::getInstance();
 foreach (['spc_pagecache', 'category_product', 'product'] as $t) {
@@ -122,6 +123,40 @@ Configuration::$v[SpcWarm::K_ENABLED] = 0;
 ok(SpcWarm::push(['https://shop.test/pl/9-x.html']) === 0, 'warming switched off: nothing is queued');
 Configuration::$v[SpcWarm::K_ENABLED] = 1;
 Configuration::$v['SPC_PC_ENABLED'] = $wasOn;
+
+// --- Cloudflare: the same addresses purged there, 30 a call; everything when emptied
+$cfLog = SPC_TMP . '/cf.log';
+file_put_contents(SPC_TMP . '/cf-router.php', '<?php file_put_contents(' . var_export($cfLog, true) . ', json_encode(["m" => $_SERVER["REQUEST_METHOD"], "u" => $_SERVER["REQUEST_URI"], "a" => isset($_SERVER["HTTP_AUTHORIZATION"]) ? $_SERVER["HTTP_AUTHORIZATION"] : "", "b" => json_decode(file_get_contents("php://input"), true)]) . "\\n", FILE_APPEND); header("Content-Type: application/json"); echo $_SERVER["REQUEST_METHOD"] === "GET" ? "{\\"success\\":true,\\"result\\":{\\"name\\":\\"alhambrasklep.pl\\"}}" : "{\\"success\\":true}";');
+$cs = stream_socket_server('tcp://127.0.0.1:0');
+$cfPort = (int) substr(strrchr(stream_socket_get_name($cs, false), ':'), 1);
+fclose($cs);
+$cfProc = proc_open([PHP_BINARY, '-S', '127.0.0.1:' . $cfPort, SPC_TMP . '/cf-router.php'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $cfPipes);
+for ($i = 0; $i < 50 && !@fsockopen('127.0.0.1', $cfPort); ++$i) {
+    usleep(100000);
+}
+SpcCloudflare::$api = 'http://127.0.0.1:' . $cfPort . '/client/v4';
+SpcCloudflare::purge(['https://shop.test/pl/']);
+ok(SpcCloudflare::flushPending() === [] && !is_file($cfLog), 'Cloudflare not set up: nothing is sent');
+Configuration::$v[SpcCloudflare::K_ZONE] = str_repeat('a1', 16);
+Configuration::$v[SpcCloudflare::K_TOKEN] = 'tok-123';
+$many = [];
+for ($i = 0; $i < 35; ++$i) {
+    $many[] = 'https://shop.test/pl/' . $i . '-p.html';
+}
+SpcCloudflare::purge($many);
+SpcCloudflare::purge(['https://shop.test/pl/0-p.html']);
+SpcCloudflare::flushPending();
+$calls = array_map(function ($l) { return json_decode($l, true); }, array_filter(explode("\n", (string) @file_get_contents($cfLog))));
+ok(count($calls) === 2 && count($calls[0]['b']['files']) === 30 && count($calls[1]['b']['files']) === 5 && $calls[0]['u'] === '/client/v4/zones/' . str_repeat('a1', 16) . '/purge_cache' && $calls[0]['a'] === 'Bearer tok-123', 'cleared pages purged by address, each once, 30 a call, with the token');
+@unlink($cfLog);
+SpcCloudflare::purgeAll();
+SpcCloudflare::flushPending();
+$calls = array_map(function ($l) { return json_decode($l, true); }, array_filter(explode("\n", (string) @file_get_contents($cfLog))));
+ok(count($calls) === 1 && $calls[0]['b'] === ['purge_everything' => true] && json_decode(Configuration::get(SpcCloudflare::K_LAST), true)['ok'] === true, 'emptying everything purges the zone whole; the last purge is noted');
+ok(SpcCloudflare::test() === ['ok' => true, 'name' => 'alhambrasklep.pl'], 'the test reads the zone back');
+proc_terminate($cfProc);
+proc_close($cfProc);
+Configuration::$v[SpcCloudflare::K_ZONE] = '';
 SpcPageCache::write($k, $html, ['controller' => 'product', 'id_object' => 7, 'shop' => 1, 'url' => '/x', 'created' => $t0, 'expires' => $t0 + 10]);
 ok(SpcPageCache::purge($t0 + 20) === 1 && !is_file(SpcPageCache::file($k)), 'expired pages are cleared');
 

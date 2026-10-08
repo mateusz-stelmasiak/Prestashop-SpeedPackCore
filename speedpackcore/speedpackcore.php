@@ -40,6 +40,7 @@ require_once dirname(__FILE__) . '/classes/SpcHtml.php';
 require_once dirname(__FILE__) . '/classes/SpcImages.php';
 require_once dirname(__FILE__) . '/classes/SpcPageCache.php';
 require_once dirname(__FILE__) . '/classes/SpcWarm.php';
+require_once dirname(__FILE__) . '/classes/SpcCloudflare.php';
 require_once dirname(__FILE__) . '/classes/SpcOptimize.php';
 
 class SpeedPackCore extends Module
@@ -98,7 +99,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.8.0';
+        $this->version = '1.9.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;

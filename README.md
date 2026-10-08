@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.8.0.zip"><img alt="Download 1.8.0" src="https://img.shields.io/badge/download-speedpackcore--1.8.0.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.9.0.zip"><img alt="Download 1.9.0" src="https://img.shields.io/badge/download-speedpackcore--1.9.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.8.0" src="https://img.shields.io/badge/version-1.8.0-17201e">
+  <img alt="Version 1.9.0" src="https://img.shields.io/badge/version-1.9.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -86,6 +86,7 @@ Visitors who are not signed in (with or without a cart) get catalogue pages read
 - **Kept gzipped** in `var/cache`, sent as they are to browsers that take gzip. Each answer says what happened in an `X-SpeedPack-Cache` header (`HIT`, `MISS`, or `BYPASS` with the reason); hits and the pages kept are on the settings page, and **Test as a visitor** opens your home page twice from the server and says in words whether it works, and if not, why
 - **Shoppers with a cart get kept pages too** *(1.8)*: not signed in but with something in the cart, they get the ready page and their own cart in the header, asked for on the page the way PrestaShop's cart block does it after a change. Signed-in customers are still built live. A switch, for themes that show the cart in the page itself
 - **Warmed again** *(1.8)*: the pages a change clears are queued and opened again in the background after a visitor has their page (PHP-FPM), so the next one gets them ready; **Warm the whole catalogue now** on the settings page, and a cron address (with a key) that works the queue and then the catalogue, about 25 seconds a call
+- **Cloudflare kept in step** *(1.9)*: with the zone ID and an API token (Cache Purge permission), the addresses cleared here are purged at Cloudflare too (30 a call), and emptying the cache purges the zone; sent after the page has gone out, with **Test the connection** and the last purge on the settings page
 - The speed audit's own requests are never kept; they get a kept page only when they ask for every part on, which is how the audit measures the page cache against the shop built without SpeedPack
 
 ### Optimize – lighter pages · *new in 1.7*
@@ -94,8 +95,11 @@ Each step works on the page PrestaShop built (`actionOutputHTMLBefore`), so the 
 
 - **WebP and AVIF pictures:** a copy next to every product, category and brand picture, made in steps from the settings page and at once for new product pictures, kept only when it is smaller. Browsers that take the format get the copy; the others, and pictures regenerated since, get the original
 - **Lazy loading:** pictures and frames below the first two of the content load as they come into view; the main product picture is asked for first (`fetchpriority="high"`)
+- **Picture sizes** *(1.9, on)*: product, category and brand pictures and the logo without `width` and `height` get them from their image type, so nothing jumps while they load (CLS); a rule keeps their shape when the theme makes them fluid
 - **Critical CSS:** made in your browser from four real pages of the shop (home, a category, a product, a CMS page) at computer and phone width – the rules the first screen needs, `@media` blocks judged at the width they apply to, font and picture addresses made absolute. It goes inline and the theme stylesheets load without holding up the first paint; it is used only while the page has the stylesheets it was made from
 - **Delay third-party scripts** *(1.8, off until switched on)*: trackers, ad tags and chat widgets (Google tag, Facebook pixel, Hotjar, Clarity, Tawk, Smartsupp and others; an editable list of addresses or bits of code) run at the visitor's first touch, key, scroll or pointer move, or after a time limit (10 s by default), in the page's order; a stand-in `gtag()` keeps a cookie banner working before that. Never on the cart, checkout and account pages
+- **Fonts without waiting** *(1.9, on)*: Google Fonts asked for with `display=swap` and an early connection, `font-display: swap` in the critical CSS fonts, and the first two WOFF2 files it uses preloaded, so text shows at once in a fallback font
+- **CDN address** *(1.9, empty = off)*: pictures, stylesheets and script files of the shop (`/img`, `/themes`, `/modules`, `/js`, `/upload`, friendly picture addresses) served from the address you give, e.g. a pull zone; page links and fonts stay on the shop
 - **Defer scripts:** the scripts at the end of the page wait for it and still run in the page's own order (inline ones become deferred scripts of their own); never on the cart, checkout and account pages, and a page with `document.write` is left alone
 - **Minify HTML:** comments and runs of spaces out, never inside scripts, styles, `pre` or text areas
 - **Server headers:** a marked block in `.htaccess` (Apache, LiteSpeed) for browser caching of WebP, AVIF and fonts, combined CSS and JS kept a year, gzip and Brotli; a copy of the file is kept. On nginx, the settings page shows the same lines to add
@@ -261,7 +265,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.8.0.zip](dist/speedpackcore-1.8.0.zip)**.
+1. Download **[speedpackcore-1.9.0.zip](dist/speedpackcore-1.9.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -308,7 +312,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache de pages (1.7) :** les pages du catalogue prêtes pour les visiteurs non connectés et sans panier, en quelques millisecondes ; vidées quand un produit, son stock ou son prix change.
 - **Optimize (1.7) :** images WebP et AVIF, chargement différé des images, CSS critique, scripts différés dans leur ordre, HTML minifié, en-têtes de cache et compression dans `.htaccess`.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.8.0.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.9.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -326,7 +330,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache stron (1.7):** strony katalogu gotowe dla niezalogowanych gości bez koszyka, w kilka milisekund; czyszczone, gdy zmieni się produkt, jego stan lub cena.
 - **Optimize (1.7):** zdjęcia WebP i AVIF, leniwe ładowanie zdjęć, critical CSS, skrypty odroczone w swojej kolejności, zminifikowany HTML, nagłówki cache i kompresja w `.htaccess`.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.8.0.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.9.0.zip`, potem Konfiguruj.
 </details>
 
 ---

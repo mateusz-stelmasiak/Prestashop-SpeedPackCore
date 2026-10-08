@@ -1,5 +1,18 @@
 # Changelog
 
+## SpeedPack Core 1.9.0
+
+Four more from the competition's lists.
+
+- **Picture sizes** (Optimize, on): product, category and brand pictures and the logo that come without `width` and `height` get them from their image type (or the logo's stored size), so the page does not jump while they load (CLS). A small rule (`height:auto`) keeps their shape when the theme makes them fluid; pictures with sizes of their own and unknown ones are left alone.
+- **Fonts without waiting** (Optimize, on): Google Fonts stylesheets ask for `display=swap` and get an early connection to both font hosts; `@font-face` rules in the critical CSS get `font-display: swap` (one that chose its own keeps it), and the first two WOFF2 files there are preloaded.
+- **CDN address** (Optimize, empty = off): the shop's pictures, stylesheets and script files, friendly picture addresses and inline `style` backgrounds too, served from the address you give. Page links, what scripts say, other sites and fonts (which need CORS on the CDN) stay as they are.
+- **Cloudflare purge** (Page cache): with the zone ID and an API token, the addresses the page cache clears are purged at Cloudflare too, in calls of 30, and emptying the cache purges the whole zone; sent once the page has gone out (PHP-FPM). "Test the connection" reads the zone back; the last purge and its result are shown. The token is never shown again.
+- **Fix: critical CSS switched itself off after an update.** It was tied to the stylesheets' version numbers (`?v=…`), which change with every module or theme update; now only the files count. CSS made before still works.
+- **Fix:** a main product picture the theme marks `loading="lazy"` is now loaded at once, as `fetchpriority="high"` asks.
+
+Picture sizes and fonts are switched on by the upgrade. Tests: sizes, fonts, CDN rewriting (and what it never touches), Cloudflare against a mock API (purges in 30s, everything, the test, an error kept), the fingerprint without version numbers, and the lazy main picture.
+
 ## SpeedPack Core 1.8.0
 
 Three things the competition has, now here too.

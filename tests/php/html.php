@@ -74,6 +74,8 @@ ok(strpos($img, '"image":"https://shop.test/12-large_default/kimchi.jpg"') !== f
 $lz = SpcHtml::lazy($page, 2);
 ok(strpos($lz, '<img class="logo img-fluid" src') !== false && strpos($lz, '<img src="https://shop.test/img/flag.png"') !== false, 'the header pictures load at once');
 ok(strpos($lz, '<img fetchpriority="high" class="js-qv-product-cover') !== false, 'the main product picture is asked for first');
+$lzz = SpcHtml::lazy(str_replace('<img class="js-qv-product-cover', '<img loading="lazy" class="js-qv-product-cover', $page));
+ok(preg_match('#<img fetchpriority="high"[^>]*loading="eager"[^>]*js-qv-product-cover|<img fetchpriority="high" loading="eager" class="js-qv-product-cover#', $lzz) && !preg_match('#loading="lazy"[^>]*js-qv-product-cover|js-qv-product-cover[^>]*loading="lazy"#', $lzz), 'a main picture the theme made lazy is loaded at once');
 ok(strpos($lz, '<img class="thumb" data-image-large-src') !== false && strpos($lz, '<img class="thumb" src="https://shop.test/13-small') !== false, 'the first two pictures of the content load at once');
 ok(strpos($lz, '<img loading="lazy" decoding="async" class="thumb" src="https://cdn.other.test') !== false, 'the ones below load as they come into view');
 ok(strpos($lz, 'alt="" loading="eager">') !== false && substr_count($lz, 'loading="lazy"') === 2, 'a picture that says how to load is left as it is');
@@ -95,6 +97,9 @@ $sheets = SpcHtml::stylesheets($page);
 ok(array_column($sheets, 'href') === ['https://shop.test/themes/classic/assets/cache/theme-1a2b3c.css', '/modules/ps_searchbar/ps_searchbar.css?v=2'], 'the head stylesheets (print left out)');
 $fp = SpcHtml::fingerprint(['/themes/classic/assets/cache/theme-1a2b3c.css', 'https://elsewhere.test/modules/ps_searchbar/ps_searchbar.css?v=2']);
 ok($fp === SpcHtml::fingerprint(array_column($sheets, 'href')), 'the fingerprint ignores the address the CSS was made from (scheme, host)');
+ok($fp === SpcHtml::fingerprint(['/themes/classic/assets/cache/theme-1a2b3c.css', '/modules/ps_searchbar/ps_searchbar.css?v=3']), 'and the version numbers (?v=), so a module update does not switch it off');
+$old = SpcHtml::fingerprint(array_column($sheets, 'href'), true);
+ok($old !== $fp && strpos(SpcHtml::critical($page, '#header{display:flex}', $old), 'spc-critical') !== false, 'CSS made before (fingerprint with the version numbers) still used');
 $cr = SpcHtml::critical($page, '#header{display:flex}</style><script>x</script>', $fp);
 ok(strpos($cr, '<style id="spc-critical">#header{display:flex}<\/style><script>x</script></style><link rel="preload" as="style" onload="this.onload=null;this.rel=\'stylesheet\'" href="https://shop.test/themes/classic/assets/cache/theme-1a2b3c.css"') !== false, 'the critical CSS inline (unable to close its own tag), the stylesheet preloaded');
 ok(substr_count($cr, '<noscript><link rel="stylesheet"') === 2 && strpos($cr, 'href="/print.css" media="print">') !== false, 'a <noscript> copy of each; print left alone');
@@ -126,6 +131,22 @@ ok(substr_count($both, '<script type="spc/delay"') === 3 && strpos($both, '<scri
 if (getenv('SPC_HTML_DELAY_OUT')) {
     file_put_contents(getenv('SPC_HTML_DELAY_OUT'), $dl);
 }
+
+// --- picture sizes, fonts, CDN
+$pg = '<html><head><link rel="stylesheet" href="https://shop.test/themes/classic/assets/css/theme.css?v=1"><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Manrope">'
+    . '<style id="spc-critical">@font-face{font-family:M;src:url("https://shop.test/themes/c/m.woff2") format("woff2")}@font-face{font-family:N;font-display:block;src:url(/n.woff2)}#a > b{x:y}</style>'
+    . '<link rel="canonical" href="https://shop.test/img/x.jpg"></head><body><img src="https://shop.test/12-home_default/kimchi.jpg" alt=""><img src="/img/logo.png" width="10"><img src="https://other.com/a.jpg">'
+    . '<div style="background:url(/img/bg.jpg)"></div><a href="https://shop.test/img/p/1.jpg">x</a><script src="https://shop.test/themes/core.js"></script><script>var u="https://shop.test/modules/x/ajax.js";</script></body></html>';
+$dim = SpcHtml::dimensions($pg, function ($u) { return strpos($u, 'home_default') ? [250, 250] : null; });
+ok(strpos($dim, '<img width="250" height="250" data-spc-dim src="https://shop.test/12-home_default/kimchi.jpg"') !== false && strpos($dim, '<img src="/img/logo.png" width="10">') !== false && strpos($dim, '<img src="https://other.com/a.jpg">') !== false, 'picture sizes: added where known, a picture with a size of its own and unknown ones left alone');
+ok(substr_count($dim, 'img[data-spc-dim]{height:auto}') === 1 && SpcHtml::dimensions('<html><head></head><body><img src="x.jpg"></body></html>', function () { return null; }) === '<html><head></head><body><img src="x.jpg"></body></html>', 'with the rule that keeps their shape; nothing known: the page as it was');
+$fo = SpcHtml::fonts($pg);
+ok(strpos($fo, 'family=Manrope&amp;display=swap') !== false && strpos($fo, '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>') !== false, 'Google Fonts: display=swap and an early connection');
+ok(strpos($fo, '@font-face{font-display: swap; font-family:M;') !== false && strpos($fo, 'font-display:block') !== false && strpos($fo, '<link rel="preload" href="https://shop.test/themes/c/m.woff2" as="font" type="font/woff2" crossorigin>') !== false && strpos($fo, '#a > b{x:y}') !== false, 'critical CSS fonts: swap added (one that chose its own kept), the WOFF2 files preloaded, the rest untouched');
+$cd = SpcHtml::cdn($pg, 'https://shop.test', 'https://cdn.test/');
+ok(strpos($cd, 'href="https://cdn.test/themes/classic/assets/css/theme.css?v=1"') !== false && strpos($cd, 'src="https://cdn.test/12-home_default/kimchi.jpg"') !== false && strpos($cd, 'src="https://cdn.test/img/logo.png"') !== false && strpos($cd, 'url(https://cdn.test/img/bg.jpg)') !== false && strpos($cd, '<script src="https://cdn.test/themes/core.js">') !== false, 'CDN: stylesheets, pictures (friendly addresses too), inline styles and script files');
+ok(strpos($cd, 'href="https://shop.test/img/x.jpg"') !== false && strpos($cd, '<a href="https://shop.test/img/p/1.jpg">') !== false && strpos($cd, 'var u="https://shop.test/modules/x/ajax.js"') !== false && strpos($cd, 'src="https://other.com/a.jpg"') !== false && strpos($cd, 'url("https://shop.test/themes/c/m.woff2")') !== false, 'never: page links, what scripts say, other sites, fonts');
+ok(SpcHtml::cdn($pg, 'https://shop.test', '') === $pg && SpcHtml::cdn($pg, 'https://shop.test', 'ftp://x') === $pg, 'no CDN (or not a web address): the page as it was');
 
 if (getenv('SPC_HTML_OUT')) {
     file_put_contents(getenv('SPC_HTML_OUT'), json_encode(['page' => $page, 'all' => SpcHtml::minify(SpcHtml::critical(SpcHtml::defer(SpcHtml::lazy(SpcHtml::images($page, $resolve))), '#header{background:#123456}', $fp))]));

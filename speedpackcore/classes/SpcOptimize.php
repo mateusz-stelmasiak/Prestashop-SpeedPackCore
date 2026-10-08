@@ -36,6 +36,9 @@ class SpcOptimize extends SpcFeature
     public const K_CRITICAL = 'SPC_OPT_CRITICAL';
     public const K_MINIFY = 'SPC_OPT_MINIFY';
     public const K_HEADERS = 'SPC_OPT_HEADERS';
+    public const K_DIMS = 'SPC_OPT_DIMS';
+    public const K_FONTS = 'SPC_OPT_FONTS';
+    public const K_CDN = 'SPC_OPT_CDN';
     public const K_DELAY = 'SPC_OPT_DELAY';
     public const K_DELAY_LIST = 'SPC_OPT_DELAY_LIST';
     public const K_DELAY_TIMEOUT = 'SPC_OPT_DELAY_TIMEOUT';
@@ -54,7 +57,7 @@ class SpcOptimize extends SpcFeature
 
     protected static function defaults()
     {
-        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0, self::K_DELAY => 0];
+        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0, self::K_DELAY => 0, self::K_DIMS => 1, self::K_FONTS => 1];
     }
 
     public function install()
@@ -78,7 +81,7 @@ class SpcOptimize extends SpcFeature
     public function uninstall()
     {
         self::headers(false);
-        foreach (array_merge(array_keys(self::defaults()), [self::K_DELAY_LIST, self::K_DELAY_TIMEOUT]) as $k) {
+        foreach (array_merge(array_keys(self::defaults()), [self::K_DELAY_LIST, self::K_DELAY_TIMEOUT, self::K_CDN]) as $k) {
             Configuration::deleteByName($k);
         }
         foreach (self::CRITICAL_PAGES as $p) {
@@ -126,6 +129,42 @@ class SpcOptimize extends SpcFeature
         return $out;
     }
 
+    /** @var array|null image type name => [width, height] */
+    protected static $types;
+
+    /**
+     * The size of a shop picture from its address: product, category, brand, supplier and store
+     * pictures by their image type (home_default: 250 x 250...), the logo by the shop's settings.
+     *
+     * @return array|null [width, height]
+     */
+    public static function pictureSize($url)
+    {
+        if (self::$types === null) {
+            self::$types = [];
+            foreach (Db::getInstance()->executeS('SELECT name, width, height FROM `' . _DB_PREFIX_ . 'image_type`') ?: [] as $t) {
+                self::$types[Tools::strtolower($t['name'])] = [(int) $t['width'], (int) $t['height']];
+            }
+        }
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        if (preg_match('#/\d+-([a-z0-9_]+)/[^/]+\.(?:jpe?g|png|gif|webp|avif)$#i', $path, $m)
+            || preg_match('#/img/[a-z]+/(?:\d+/)*[a-z0-9]+-([a-z0-9_]+)\.(?:jpe?g|png|gif|webp|avif)$#i', $path, $m)
+            || preg_match('#/c/\d+-([a-z0-9_]+)/[^/]+\.(?:jpe?g|png|gif|webp|avif)$#i', $path, $m)) {
+            $type = Tools::strtolower($m[1]);
+
+            return isset(self::$types[$type]) ? self::$types[$type] : null;
+        }
+        $logo = (string) Configuration::get('PS_LOGO');
+        if ($logo !== '' && substr($path, -strlen('/img/' . $logo)) === '/img/' . $logo) {
+            $w = (int) Configuration::get('SHOP_LOGO_WIDTH');
+            $h = (int) Configuration::get('SHOP_LOGO_HEIGHT');
+
+            return $w && $h ? [$w, $h] : null;
+        }
+
+        return null;
+    }
+
     /** For the page cache: which picture format this browser gets ('' for the originals). */
     public static function imageFormat()
     {
@@ -148,6 +187,9 @@ class SpcOptimize extends SpcFeature
                 return SpcImages::resolve($url, $formats, $base, $host);
             });
         }
+        if (self::on(self::K_DIMS)) {
+            $html = SpcHtml::dimensions($html, [__CLASS__, 'pictureSize']);
+        }
         if (self::on(self::K_LAZY)) {
             $html = SpcHtml::lazy($html);
         }
@@ -168,6 +210,13 @@ class SpcOptimize extends SpcFeature
         }
         if (self::on(self::K_CRITICAL) && in_array($page, self::CRITICAL_PAGES, true) && !Tools::getValue('spc_nocrit')) {
             $html = SpcHtml::critical($html, self::criticalCss($page), (string) Configuration::get(self::criticalKey($page) . '_FP'));
+        }
+        if (self::on(self::K_FONTS)) {
+            $html = SpcHtml::fonts($html);
+        }
+        $cdn = trim((string) Configuration::get(self::K_CDN));
+        if ($cdn !== '') {
+            $html = SpcHtml::cdn($html, $this->context->shop->getBaseURL(true), $cdn);
         }
         if (self::on(self::K_MINIFY)) {
             $html = SpcHtml::minify($html);
@@ -452,7 +501,7 @@ NG;
         if (!$this->isRegisteredInHook('actionOutputHTMLBefore') || !$this->isRegisteredInHook('actionWatermark')) {
             $this->registerHooks();
         }
-        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DEFER, self::K_DELAY, self::K_CRITICAL, self::K_MINIFY, self::K_HEADERS];
+        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DIMS, self::K_DEFER, self::K_DELAY, self::K_CRITICAL, self::K_FONTS, self::K_MINIFY, self::K_HEADERS];
         if (Tools::isSubmit('submitSpcOptimize')) {
             $q = (int) Tools::getValue(self::K_QUALITY);
             if ($q < 40 || $q > 95) {
@@ -465,6 +514,12 @@ NG;
                 $list = trim(str_replace("\r", '', (string) Tools::getValue(self::K_DELAY_LIST)));
                 Configuration::updateValue(self::K_DELAY_LIST, $list === trim(self::DELAY_DEFAULT) ? '' : $list);
                 Configuration::updateValue(self::K_DELAY_TIMEOUT, max(0, min(60, (int) Tools::getValue(self::K_DELAY_TIMEOUT))));
+                $cdn = rtrim(trim((string) Tools::getValue(self::K_CDN)), '/');
+                if ($cdn !== '' && !preg_match('#^https://[a-z0-9.-]+(:\d+)?(/[^\s]*)?$#i', $cdn)) {
+                    $out .= $this->displayError($this->l('The CDN address must start with https:// (for example https://cdn.example.com); it was left as it was.'));
+                } else {
+                    Configuration::updateValue(self::K_CDN, $cdn);
+                }
                 $headers = self::enabled() && self::on(self::K_HEADERS);
                 if (!self::headers($headers)) {
                     Configuration::updateValue(self::K_HEADERS, self::headersWritten() ? 1 : 0);
@@ -531,6 +586,7 @@ NG;
         $helper->fields_value[self::K_DELAY_LIST] = (string) Configuration::get(self::K_DELAY_LIST) !== '' ? (string) Configuration::get(self::K_DELAY_LIST) : self::DELAY_DEFAULT;
         $t = Configuration::get(self::K_DELAY_TIMEOUT);
         $helper->fields_value[self::K_DELAY_TIMEOUT] = $t === false ? 10 : (int) $t;
+        $helper->fields_value[self::K_CDN] = (string) Configuration::get(self::K_CDN);
 
         return $out . $helper->generateForm([['form' => [
             'id_form' => 'spc-optimize',
@@ -540,12 +596,15 @@ NG;
                 $switch(self::K_WEBP, $this->l('WebP pictures'), $this->l('Browsers that take WebP get the WebP copy of a picture (about a third smaller). Make the copies with "Convert pictures" above; new product pictures get theirs at once.')),
                 $switch(self::K_AVIF, $this->l('AVIF pictures'), $can['avif'] ? $this->l('Smaller still, for browsers that take AVIF; slower to make.') : $this->l('This server cannot write AVIF (PHP 8.1 with GD built with AVIF is needed).')),
                 ['type' => 'text', 'name' => self::K_QUALITY, 'label' => $this->l('Picture quality'), 'class' => 'fixed-width-sm', 'desc' => $this->l('40 to 95; 82 looks the same as the original to most eyes.')],
+                $switch(self::K_DIMS, $this->l('Picture sizes'), $this->l('Shop pictures without a width and height get them (from their image type, and the logo from the shop settings), so the page does not jump while they load (layout shift, CLS).')),
                 $switch(self::K_LAZY, $this->l('Lazy loading'), $this->l('Pictures and videos below the top of the page load as they come into view; the main product picture is asked for first.')),
                 $switch(self::K_CRITICAL, $this->l('Critical CSS'), $this->l('The CSS for the top of the page inline, the rest loaded without holding up the first paint. Made with "Make critical CSS" above; used only while the theme stylesheets stay as they were.')),
                 $switch(self::K_DEFER, $this->l('Defer scripts'), $this->l('Scripts at the end of the page wait for it, in their order. Not on the cart, checkout and account pages. Check the shop after switching it on: a module that writes into the page while it loads may need it off.')),
                 $switch(self::K_DELAY, $this->l('Delay third-party scripts'), $this->l('Trackers, ad tags and chat widgets (the list below) run when the visitor first touches, scrolls or moves the pointer, or after the time below, instead of while the page loads: the page is ready sooner. Not on the cart, checkout and account pages. A cookie banner calling gtag() keeps working.')),
                 ['type' => 'textarea', 'name' => self::K_DELAY_LIST, 'label' => $this->l('Scripts to delay'), 'rows' => 6, 'desc' => $this->l('One per line: a part of the script address or of its code. Never put the cookie banner, payment or the shop own scripts here.')],
                 ['type' => 'text', 'name' => self::K_DELAY_TIMEOUT, 'label' => $this->l('Run them anyway after'), 'suffix' => $this->l('s'), 'class' => 'fixed-width-sm', 'desc' => $this->l('0 to wait for the visitor only. 10 keeps visits that never move counted in analytics.')],
+                $switch(self::K_FONTS, $this->l('Fonts without waiting'), $this->l('Text shows at once in a fallback font while the theme fonts load (font-display: swap); the fonts the critical CSS needs are asked for first; Google Fonts get display=swap and an early connection.')),
+                ['type' => 'text', 'name' => self::K_CDN, 'label' => $this->l('CDN address'), 'placeholder' => 'https://cdn.example.com', 'desc' => $this->l('Optional. Pictures, theme and module CSS and JS are asked for from this address instead of the shop (a pull CDN pointed at the shop: Cloudflare, BunnyCDN, KeyCDN...). Fonts stay on the shop. Empty: everything from the shop.')],
                 $switch(self::K_MINIFY, $this->l('Minify HTML'), $this->l('Comments and runs of spaces out of the page (never in scripts, styles, pre or text areas).')),
                 $switch(self::K_HEADERS, $this->l('Server headers'), self::server() === 'nginx' ? $this->l('This shop runs on nginx: copy the lines shown above into its configuration instead.') : $this->l('Writes a marked block to .htaccess (Apache, LiteSpeed): browser caching for WebP, AVIF and fonts, combined CSS and JS kept a year, gzip and Brotli. A copy of the file is kept as .htaccess.speedpackcore.bak.')),
             ],

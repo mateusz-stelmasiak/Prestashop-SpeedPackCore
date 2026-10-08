@@ -102,7 +102,7 @@ class SpcPageCache extends SpcFeature
     public function uninstall()
     {
         self::flush();
-        foreach ([self::K_ENABLED, self::K_TTL, self::K_PAGES, self::K_MOBILE, self::K_CARTS, SpcWarm::K_ENABLED, SpcWarm::K_QUEUE, SpcWarm::K_LOCK, SpcWarm::K_CURSOR] as $k) {
+        foreach ([self::K_ENABLED, self::K_TTL, self::K_PAGES, self::K_MOBILE, self::K_CARTS, SpcWarm::K_ENABLED, SpcWarm::K_QUEUE, SpcWarm::K_LOCK, SpcWarm::K_CURSOR, SpcCloudflare::K_ZONE, SpcCloudflare::K_TOKEN, SpcCloudflare::K_LAST] as $k) {
             Configuration::deleteByName($k);
         }
         Db::getInstance()->execute('DROP TABLE IF EXISTS ' . self::table());
@@ -491,8 +491,10 @@ class SpcPageCache extends SpcFeature
             return 0;
         }
         $rows = $db->executeS('SELECT id_entry, url, id_shop FROM ' . self::table() . ' WHERE ' . implode(' OR ', $or));
-        // the pages cleared are warmed again in the background (SpcWarm)
-        SpcWarm::push(SpcWarm::urlsOf($rows ?: []));
+        // the pages cleared are warmed again in the background (SpcWarm), and purged at Cloudflare
+        $urls = SpcWarm::urlsOf($rows ?: []);
+        SpcCloudflare::purge($urls);
+        SpcWarm::push($urls);
 
         return self::remove(array_column($rows ?: [], 'id_entry'));
     }
@@ -523,6 +525,7 @@ class SpcPageCache extends SpcFeature
         } catch (Exception $e) {
             $rows = [];
         }
+        SpcCloudflare::purgeAll();
         SpcWarm::push(array_slice(SpcWarm::urlsOf($rows ?: []), 0, SpcWarm::MAX_QUEUE));
         $n = self::remove(array_column($rows ?: [], 'id_entry'));
         // files of a lost index (an interrupted write, a restored database) go too
@@ -669,6 +672,29 @@ class SpcPageCache extends SpcFeature
             $n = self::flush();
             $out .= $this->displayConfirmation(sprintf($this->l('Page cache emptied (%d pages).'), $n));
         }
+        if (Tools::isSubmit('submitSpcCloudflare') || Tools::isSubmit('submitSpcCloudflareTest')) {
+            $zone = trim((string) Tools::getValue(SpcCloudflare::K_ZONE));
+            $token = trim((string) Tools::getValue(SpcCloudflare::K_TOKEN));
+            if ($zone !== '' && !preg_match('/^[a-f0-9]{32}$/i', $zone)) {
+                $out .= $this->displayError($this->l('The zone ID is 32 letters and digits (Cloudflare, the domain, Overview, on the right).'));
+            } else {
+                Configuration::updateValue(SpcCloudflare::K_ZONE, $zone);
+                // the token field shows dots once saved: dots leave the saved token as it is
+                if ($token !== '' && strpos($token, '•') === false) {
+                    Configuration::updateValue(SpcCloudflare::K_TOKEN, $token);
+                }
+                if ($zone === '') {
+                    Configuration::updateValue(SpcCloudflare::K_TOKEN, '');
+                }
+                if (Tools::isSubmit('submitSpcCloudflareTest') && SpcCloudflare::configured()) {
+                    $t = SpcCloudflare::test();
+                    $out .= $t['ok'] ? $this->displayConfirmation(sprintf($this->l('Cloudflare answers: zone %s. Cleared pages will be purged there too.'), $t['name']))
+                        : $this->displayError(sprintf($this->l('Cloudflare did not accept it: %s'), $t['error']));
+                } else {
+                    $out .= $this->displayConfirmation($this->l('Settings updated.'));
+                }
+            }
+        }
         $test = null;
         if (Tools::isSubmit('submitSpcPageCacheTest')) {
             $test = $this->explainTest(self::selfTest($this->context));
@@ -754,7 +780,7 @@ class SpcPageCache extends SpcFeature
         return $out . $helper->generateForm([['form' => [
             'id_form' => 'spc-pagecache',
             'legend' => ['title' => $this->displayName, 'icon' => 'icon-bolt'],
-            'description' => $this->l('Visitors who are not signed in and have nothing in their cart get catalogue pages ready-made, in a few milliseconds instead of having PrestaShop build them. Signed-in customers, carts, the checkout, searches and anything personal are always built live. Pages are cleared when a product, its stock or price, a category or a page changes, and with "Clear cache" in PrestaShop. Visits served from the cache do not reach the visitor statistics of PrestaShop (Behaviour still counts them).'),
+            'description' => $this->l('Visitors who are not signed in get catalogue pages ready-made, in a few milliseconds instead of having PrestaShop build them. Signed-in customers, the cart page, the checkout, searches and anything personal are always built live. Pages are cleared when a product, its stock or price, a category or a page changes, and with "Clear cache" in PrestaShop. Visits served from the cache do not reach the visitor statistics of PrestaShop (Behaviour still counts them).'),
             'input' => [
                 $switch(self::K_ENABLED, $this->l('Page cache'), $this->l('Test your shop as a visitor (a private window) after switching it on.')),
                 ['type' => 'checkbox', 'name' => 'SPC_PC_PAGE', 'label' => $this->l('Pages kept'), 'values' => ['query' => array_map(function ($p) use ($names) { return ['id' => $p, 'name' => $names[$p]]; }, self::PAGES), 'id' => 'id', 'name' => 'name']],
@@ -768,6 +794,39 @@ class SpcPageCache extends SpcFeature
                 ['type' => 'submit', 'name' => 'submitSpcPageCacheFlush', 'title' => $this->l('Empty the page cache'), 'icon' => 'process-icon-eraser', 'class' => 'pull-left'],
                 ['type' => 'submit', 'name' => 'submitSpcPageCacheTest', 'title' => $this->l('Test as a visitor'), 'icon' => 'process-icon-preview', 'class' => 'pull-left'],
             ],
+        ]]]) . $this->cloudflareForm();
+    }
+
+    /** Cloudflare: the zone and the token, a test, and the last purge. */
+    protected function cloudflareForm()
+    {
+        $helper = new HelperForm();
+        $helper->module = $this->module;
+        $helper->name_controller = $this->name;
+        $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
+        $helper->submit_action = 'submitSpcCloudflare';
+        $helper->default_form_language = (int) Configuration::get('PS_LANG_DEFAULT');
+        $helper->fields_value = [
+            SpcCloudflare::K_ZONE => (string) Configuration::get(SpcCloudflare::K_ZONE),
+            SpcCloudflare::K_TOKEN => (string) Configuration::get(SpcCloudflare::K_TOKEN) !== '' ? str_repeat('•', 12) : '',
+        ];
+        $last = json_decode((string) Configuration::get(SpcCloudflare::K_LAST), true);
+        $desc = $this->l('When the shop sits behind Cloudflare: the pages cleared here are purged there too, and "Clear cache" purges it whole. An API token with the Cache Purge permission for the zone (Cloudflare, My Profile, API Tokens).');
+        if (is_array($last)) {
+            $desc .= ' ' . sprintf($this->l('Last purge: %1$s, %2$s.'), $last['at'], $last['ok'] ? $this->l('done') : sprintf($this->l('refused (%s)'), $last['error']));
+        }
+
+        return $helper->generateForm([['form' => [
+            'id_form' => 'spc-cloudflare',
+            'legend' => ['title' => 'Cloudflare', 'icon' => 'icon-cloud'],
+            'description' => $desc,
+            'input' => [
+                ['type' => 'text', 'name' => SpcCloudflare::K_ZONE, 'label' => $this->l('Zone ID'), 'class' => 'fixed-width-xxl'],
+                ['type' => 'text', 'name' => SpcCloudflare::K_TOKEN, 'label' => $this->l('API token'), 'class' => 'fixed-width-xxl', 'desc' => $this->l('Kept on the server; shown as dots once saved.')],
+            ],
+            'submit' => ['title' => $this->l('Save')],
+            'buttons' => [['type' => 'submit', 'name' => 'submitSpcCloudflareTest', 'title' => $this->l('Save and test'), 'icon' => 'process-icon-ok', 'class' => 'pull-left']],
         ]]]);
     }
 }
