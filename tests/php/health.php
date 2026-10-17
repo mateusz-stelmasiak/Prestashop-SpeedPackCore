@@ -20,7 +20,7 @@ class Db
     function Affected_Rows() { return $this->affected; }
     function escape($s) { return substr($this->pdo->quote((string) $s), 1, -1); }
 }
-class Configuration { static $v = []; static function get($k, $l = null) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } static function isCatalogMode() { return false; } static function set($k, $x) { self::$v[$k] = $x; } }
+class Configuration { static function loadConfiguration() {} static $v = []; static function get($k, $l = null) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } static function isCatalogMode() { return false; } static function set($k, $x) { self::$v[$k] = $x; } }
 class Shop { static function isFeatureActive() { return false; } }
 class Tools
 {

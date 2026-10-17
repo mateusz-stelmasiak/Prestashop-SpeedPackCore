@@ -131,7 +131,7 @@ class SpcWarm
         if (!isset($memo[$idShop])) {
             $memo[$idShop] = '';
             try {
-                $shop = $idShop ? new Shop($idShop) : Context::getContext()->shop;
+                $shop = new Shop((int) ($idShop ?: Configuration::get('PS_SHOP_DEFAULT')));
                 $domain = Configuration::get('PS_SSL_ENABLED') ? $shop->domain_ssl : $shop->domain;
                 if ($domain) {
                     $memo[$idShop] = (Configuration::get('PS_SSL_ENABLED') ? 'https://' : 'http://') . $domain;
@@ -237,9 +237,7 @@ class SpcWarm
         }
         Configuration::updateGlobalValue(self::K_LOCK, $now);
         register_shutdown_function(function () {
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
+            fastcgi_finish_request(); // there, checked above
             @set_time_limit(30);
             ignore_user_abort(true);
             SpcWarm::work(SpcWarm::PER_VISIT, SpcWarm::VISIT_SECONDS);

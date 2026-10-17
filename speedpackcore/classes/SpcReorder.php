@@ -173,8 +173,7 @@ class SpcReorder extends SpcFeature
             return true;
         }
 
-        return method_exists('Product', 'isAvailableWhenOutOfStock')
-            && (bool) Product::isAvailableWhenOutOfStock(StockAvailable::outOfStock((int) $line['id_product']));
+        return (bool) Product::isAvailableWhenOutOfStock((int) StockAvailable::outOfStock((int) $line['id_product']));
     }
 
     /**

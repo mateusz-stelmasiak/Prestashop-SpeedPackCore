@@ -1,5 +1,14 @@
 # Changelog
 
+## SpeedPack Core 1.9.2
+
+PrestaShop Validator clean-up (Compatibility, Errors, PrestaShop 9):
+
+- `config.xml` carries the module's own description again (it had an older, shorter one).
+- No `Context::getContext()` left: the 1.7.0 upgrade takes its parts from the module (`part()`), the cache warmer finds a shop by its id or the default shop.
+- Conditions that static analysis knows always hold are gone: `array_filter` with a closure instead of `'strlen'`, `fastcgi_finish_request()` called where it was already checked, the module of a module page, `is_array()` around results that are arrays or `false`, `method_exists()` for methods PrestaShop has had since 1.5; `Product::isAvailableWhenOutOfStock()` gets an int.
+- Checked with PHPStan 1.12 at level 6 with the always-true checks, against PrestaShop 1.7.8 classes: nothing reported.
+
 ## SpeedPack Core 1.9.1
 
 - **Fix: the InstantNav settings form showed no fields** (and, in debug mode, "Undefined index: form" in the compiled `form.tpl`): it was handed to PrestaShop's form helper as a bare fieldset instead of a list of them. Its 17 settings are back.

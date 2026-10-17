@@ -125,9 +125,7 @@ class SpcPageCache extends SpcFeature
         Configuration::updateGlobalValue($key, $value);
         Db::getInstance()->execute('UPDATE `' . _DB_PREFIX_ . 'configuration` SET `value` = \'' . pSQL((string) $value) . '\', date_upd = NOW()
             WHERE `name` = \'' . pSQL($key) . '\' AND (id_shop IS NOT NULL OR id_shop_group IS NOT NULL)');
-        if (method_exists('Configuration', 'loadConfiguration')) {
-            Configuration::loadConfiguration();
-        }
+        Configuration::loadConfiguration();
 
         return (string) Configuration::get($key) === (string) $value;
     }

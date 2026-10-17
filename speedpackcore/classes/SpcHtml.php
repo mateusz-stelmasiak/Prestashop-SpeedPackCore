@@ -235,7 +235,7 @@ class SpcHtml
      */
     public static function delay($html, array $patterns, $timeout = 0)
     {
-        $patterns = array_values(array_filter(array_map('trim', $patterns), 'strlen'));
+        $patterns = array_values(array_filter(array_map('trim', $patterns), function ($p) { return $p !== ''; }));
         $end = strripos($html, '</body>');
         if (!$patterns || $end === false) {
             return $html;

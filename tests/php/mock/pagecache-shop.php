@@ -22,6 +22,10 @@ class Db
 }
 class Configuration
 {
+    static function loadConfiguration()
+    {
+    }
+
     static function get($k)
     {
         $v = ['SPC_PC_ENABLED' => 1, 'SPC_PC_TTL' => 12, 'SPC_PC_PAGES' => 'index,category,product', 'SPC_PC_MOBILE' => 1, 'PS_SHOP_ENABLE' => 1];

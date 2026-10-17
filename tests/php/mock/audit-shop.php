@@ -19,7 +19,7 @@ function spc_state()
 
     return is_array($s) ? $s : ['key' => '', 'pagecache' => false];
 }
-class Configuration { static function get($k) { return $k === 'SPC_AUDIT_KEY' ? spc_state()['key'] : false; } static function updateValue($k, $v) { return true; } }
+class Configuration { static function loadConfiguration() {} static function get($k) { return $k === 'SPC_AUDIT_KEY' ? spc_state()['key'] : false; } static function updateValue($k, $v) { return true; } }
 class Tools { static function strlen($s) { return strlen((string) $s); } static function passwdGen($n = 8) { return str_repeat('x', $n); } }
 class Db
 {

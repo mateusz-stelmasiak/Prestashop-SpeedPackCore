@@ -99,7 +99,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.9.1';
+        $this->version = '1.9.2';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -233,7 +233,7 @@ class SpeedPackCore extends Module
     private function pageName()
     {
         $c = $this->context->controller;
-        if ($c instanceof ModuleFrontController && $c->module) {
+        if ($c instanceof ModuleFrontController) {
             return 'module-' . $c->module->name;
         }
 
@@ -437,6 +437,12 @@ class SpeedPackCore extends Module
     /* ------------------------------------------------------------------ *
      *  Back office
      * ------------------------------------------------------------------ */
+
+    /** One of the module's parts (pageCache, optimize, …), as built above; null for anything else. */
+    public function part($name)
+    {
+        return property_exists($this, $name) && $this->{$name} instanceof SpcFeature ? $this->{$name} : null;
+    }
 
     public function getContent()
     {

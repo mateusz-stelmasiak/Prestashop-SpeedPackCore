@@ -19,7 +19,7 @@ class Db
     function getValue($sql) { $r = $this->getRow($sql); return $r ? reset($r) : false; }
     function escape($s) { return substr($this->pdo->quote((string) $s), 1, -1); }
 }
-class Configuration { static $v = []; static function get($k) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function updateGlobalValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } }
+class Configuration { static function loadConfiguration() {} static $v = []; static function get($k) { return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k, $x) { self::$v[$k] = $x; return true; } static function updateGlobalValue($k, $x) { self::$v[$k] = $x; return true; } static function deleteByName($k) { unset(self::$v[$k]); return true; } }
 class Tools
 {
     static $get = [];

@@ -3,7 +3,7 @@ require __DIR__ . '/bootstrap.php';
 // A stand-in for the bits of PrestaShop the module touches, to run install, hooks and the settings page.
 define('_PS_VERSION_', '1.7.8.0'); define('_PS_MODULE_DIR_', SPC_ROOT . '/'); define('__PS_BASE_URI__', '/'); define('_DB_PREFIX_', 'ps_'); define('_COOKIE_KEY_', 'abc'); define('_PS_ROOT_DIR_', SPC_FAKEPS); define('_PS_OVERRIDE_DIR_', SPC_FAKEPS . '/override/');
 function pSQL($s){ return addslashes((string) $s); }
-class Configuration { static $v = []; static function get($k){ return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k,$x){ self::$v[$k]=$x; return true; }
+class Configuration { static function loadConfiguration() {} static $v = []; static function get($k){ return isset(self::$v[$k]) ? self::$v[$k] : false; } static function updateValue($k,$x){ self::$v[$k]=$x; return true; }
   static function updateGlobalValue($k,$x){ return self::updateValue($k,$x);} static function deleteByName($k){ unset(self::$v[$k]); return true; } static function isCatalogMode(){ return false; } }
 class Shop { static function isFeatureActive(){ return false; } }
 class Tools { static function getHttpHost($a=false,$b=false,$c=false){ return 'shop.test'; } static $post=[]; static function strtolower($s){return strtolower($s);} static function strlen($s){return strlen($s);} static function strpos($a,$b){return strpos($a,$b);} static function strrpos($a,$b){return strrpos($a,$b);} static function substr($a,$b,$c=null){return substr($a,$b,$c);}
@@ -33,6 +33,9 @@ require SPC_MODULE . '/speedpackcore.php';
 $m = new SpeedPackCore();
 assert_ok($m->module_key === '3eb6b4d19aa0d3c653ffeb7d54022e6c', 'module key');
 assert_ok($m->install(), 'install');
+assert_ok($m->part('pageCache') instanceof SpcPageCache && $m->part('optimize') instanceof SpcOptimize && $m->part('version') === null && $m->part('nothing') === null, 'part(): the module parts, nothing else');
+require_once __DIR__ . '/../../speedpackcore/upgrade/upgrade-1.7.0.php';
+assert_ok(upgrade_module_1_7_0($m) === true, 'upgrade 1.7.0 installs the parts through the module (no Context of its own)');
 echo 'hooks: ', implode(',', array_keys(Module::$hooks)), "\n";
 echo 'config keys: ', count(Configuration::$v), ' ', implode(',', array_keys(Configuration::$v)), "\n";
 $m->hookActionFrontControllerSetMedia([]); $m->hookDisplayHeader([]);

@@ -14,10 +14,10 @@ if (!defined('_PS_VERSION_')) {
 
 function upgrade_module_1_7_0($module)
 {
-    $context = Context::getContext();
-    $pageCache = new SpcPageCache($module, $context, 'Page cache');
-    $optimize = new SpcOptimize($module, $context, 'Optimize');
-    if (!$pageCache->install() || !$optimize->install()) {
+    // the parts as the module built them (with its context)
+    $pageCache = $module->part('pageCache');
+    $optimize = $module->part('optimize');
+    if (!$pageCache || !$optimize || !$pageCache->install() || !$optimize->install()) {
         return false;
     }
     Media::clearCache();

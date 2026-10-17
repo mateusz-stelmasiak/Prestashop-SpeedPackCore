@@ -405,7 +405,7 @@ class SpcCacheBackend
         $m->addServer((string) $s['host'], (int) $s['port']);
         $versions = $m->getVersion();
 
-        return (is_array($versions) && $versions && !in_array('255.255.255', $versions, true))
+        return ($versions && !in_array('255.255.255', $versions, true))
             ? true
             : 'no server at ' . $s['host'] . ':' . (int) $s['port'];
     }
@@ -504,7 +504,7 @@ class SpcCacheBackend
         if ($backend === self::APCU && function_exists('apcu_cache_info')) {
             $info = @apcu_cache_info(true);
             $sma = @apcu_sma_info(true);
-            if (!is_array($info)) {
+            if (!$info) {
                 return null;
             }
             // shared memory: segments x their size, and what is still free in them
@@ -526,7 +526,7 @@ class SpcCacheBackend
                 $m->addServer($server['ip'], (int) $server['port']);
             }
             $all = @$m->getStats();
-            if (!is_array($all) || !$all) {
+            if (!$all) {
                 return null;
             }
 
