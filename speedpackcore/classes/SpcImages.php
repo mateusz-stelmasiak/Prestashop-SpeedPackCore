@@ -57,6 +57,8 @@ class SpcImages
             return 0;
         }
         if (self::fresh($src, $format)) {
+            self::readable($src, $dst); // a copy from before 1.9.3 may be unreadable to the web server
+
             return 0;
         }
         $info = @getimagesize($src);
@@ -90,9 +92,69 @@ class SpcImages
 
             return 0;
         }
+        // the temporary file has PHP's own umask (0600 on many hosts: a 403 from the web server);
+        // the copy gets the picture's permissions, readable by everyone like any picture
+        self::readable($src, $dst);
         @touch($dst, max(time(), filemtime($src)));
 
         return $before - $after;
+    }
+
+    /** The copy readable like its picture: the picture's permissions, and readable by all. */
+    public static function readable($src, $dst)
+    {
+        $perms = @fileperms($dst);
+        $want = self::mode($src);
+        if ($perms !== false && ($perms & 0777) !== $want) {
+            @chmod($dst, $want);
+        }
+    }
+
+    public static function mode($src)
+    {
+        $p = @fileperms($src);
+
+        return ($p !== false ? $p & 0666 : 0644) | 0444;
+    }
+
+    /**
+     * Every WebP and AVIF copy under img/ made readable (copies made before 1.9.3 could be 0600).
+     *
+     * @return int how many were changed
+     */
+    public static function repairAll()
+    {
+        $fixed = 0;
+        foreach (['p', 'c', 'm', 'su', 'st'] as $d) {
+            $dir = self::root() . 'img/' . $d;
+            if (!is_dir($dir)) {
+                continue;
+            }
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+            foreach ($it as $file) {
+                $path = $file->getPathname();
+                if (!preg_match('/\.(webp|avif)$/i', $path)) {
+                    continue;
+                }
+                $perms = @fileperms($path);
+                if ($perms === false || ($perms & 0004)) {
+                    continue;
+                }
+                $src = '';
+                foreach (['jpg', 'jpeg', 'png'] as $ext) {
+                    $try = preg_replace('/\.(webp|avif)$/i', '.' . $ext, $path);
+                    if (is_file($try)) {
+                        $src = $try;
+                        break;
+                    }
+                }
+                if (@chmod($path, $src !== '' ? self::mode($src) : 0644)) {
+                    ++$fixed;
+                }
+            }
+        }
+
+        return $fixed;
     }
 
     /** The product picture files of one image (its sizes; the uploaded original is not shown). */

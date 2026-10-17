@@ -190,9 +190,20 @@ for ($x = 0; $x < 400; $x += 20) {
 imagejpeg($im, $jpg, 95);
 imagedestroy($im);
 ok(SpcImages::productFiles(12) === [$jpg], 'the sizes of a product picture are found');
+chmod($jpg, 0644);
+$umask = umask(077); // as PHP runs on many hosts: new files 0600
 $saved = SpcImages::convert($jpg, 'webp', 82);
-ok($saved > 0 && is_file(SPC_TMP . '/root/img/p/1/2/12-home_default.webp') && filesize(SPC_TMP . '/root/img/p/1/2/12-home_default.webp') < filesize($jpg), 'a WebP copy, smaller (' . $saved . ' bytes saved)');
+umask($umask);
+$webp = SPC_TMP . '/root/img/p/1/2/12-home_default.webp';
+ok($saved > 0 && is_file($webp) && filesize($webp) < filesize($jpg), 'a WebP copy, smaller (' . $saved . ' bytes saved)');
+clearstatcache();
+ok((fileperms($webp) & 0777) === 0644, 'the copy is readable like its picture (0644), whatever PHP\'s umask (' . decoct(fileperms($webp) & 0777) . ')');
+chmod($webp, 0600);
 ok(SpcImages::convert($jpg, 'webp', 82) === 0, 'a picture with a fresh copy is skipped');
+clearstatcache();
+ok((fileperms($webp) & 0777) === 0644, '... and an unreadable copy is made readable on the way');
+chmod($webp, 0600);
+ok(SpcImages::repairAll() === 1 && (clearstatcache() || (fileperms($webp) & 0777) === 0644) && SpcImages::repairAll() === 0, 'copies from before 1.9.3 repaired in one go (once)');
 $base = 'https://shop.test/';
 ok(SpcImages::resolve('https://shop.test/12-home_default/kimchi.jpg', ['webp'], $base, 'shop.test') === 'https://shop.test/img/p/1/2/12-home_default.webp', 'the friendly address of a product picture points at its copy');
 ok(SpcImages::resolve('https://shop.test/img/p/1/2/12-home_default.jpg', ['avif', 'webp'], $base, 'shop.test') === 'https://shop.test/img/p/1/2/12-home_default.webp', 'AVIF first when there is one, else WebP');

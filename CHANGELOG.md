@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.9.3
+
+- **Fix: WebP and AVIF copies answered 403 Forbidden.** They were written to a temporary file and renamed, so they kept PHP's own umask – 0600 on many hosts, where the web server runs as another user and cannot read them. Each copy now gets its picture's permissions and is readable by all, like any picture. The upgrade repairs every copy already made, and "Make copies" repairs any it passes.
+
 ## SpeedPack Core 1.9.2
 
 PrestaShop Validator clean-up (Compatibility, Errors, PrestaShop 9):
