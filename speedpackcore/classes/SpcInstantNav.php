@@ -537,6 +537,6 @@ class SpcInstantNav extends SpcFeature
             $helper->fields_value[$key] = $this->conf($key);
         }
 
-        return $helper->generateForm($fields);
+        return $helper->generateForm([$fields]);
     }
 }

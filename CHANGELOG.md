@@ -1,5 +1,10 @@
 # Changelog
 
+## SpeedPack Core 1.9.1
+
+- **Fix: the InstantNav settings form showed no fields** (and, in debug mode, "Undefined index: form" in the compiled `form.tpl`): it was handed to PrestaShop's form helper as a bare fieldset instead of a list of them. Its 17 settings are back.
+- Tests: the form helper stand-ins now refuse a bare fieldset, as PrestaShop does, so this cannot come back unnoticed.
+
 ## SpeedPack Core 1.9.0
 
 Four more from the competition's lists.
