@@ -1,5 +1,11 @@
 # Changelog
 
+## SpeedPack Core 1.10.1
+
+- **InstantNav is fast again: the new page shows 20–60 ms after the click, where it took 100–500 ms.** The page was fetched on hover and ready at the click, but the View Transitions API first captured the old page and only then let the content change; the speed audit even measured InstantNav slower than no speed-up. The new content now goes in at once and eases in (fade, rise or settle, as set); nothing waits for the old page to be captured or to fade out. Measured in the audit on the test shop: click to page shown 349 → 36 ms with InstantNav, 27 ms with all of SpeedPack.
+- **Fix: the speed audit's CartSpeed count read 0 → 0.** It asked MySQL `SHOW SESSION STATUS` through `getRow()`, which adds `LIMIT 1` that MySQL refuses; and CartSpeed was switched off for the "without" side only at the shop level, while the back office read the global value. Now 73 → 3 on the test shop.
+- Tests: the audit's database stand-in refuses `SHOW … LIMIT 1` as MySQL does.
+
 ## SpeedPack Core 1.10.0
 
 - **Compress pictures** (Optimize): the JPEG and PNG pictures themselves made smaller – product sizes, categories, brands, suppliers and stores – for every browser and every place they go (feeds, e-mails, marketplaces), not only the WebP copies.

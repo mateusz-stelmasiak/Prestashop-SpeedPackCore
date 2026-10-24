@@ -40,7 +40,7 @@
 
     if (cfg.enabled === false) { return; }
 
-    var BUILD = '2026-10-06b';
+    var BUILD = '2026-10-24';
 
     var ORIGIN = window.location.origin;
     var here = strip(window.location.href);
@@ -834,7 +834,6 @@
      * ---------------------------------------------------------------- */
 
     var MOTION_STYLE = 'instantnav-motion';
-    var REGION_NAME = 'instantnav-region';
 
     function motionWanted() {
         if (motion === 'off' || motionMs === 0) { return false; }
@@ -856,33 +855,17 @@
         var ease = 'cubic-bezier(.22,.61,.36,1)';
 
         var css =
-            /* The old snapshot leaves first and a little faster, so the two
-             * never both sit at half opacity, which is what reads as muddy. */
-            '::view-transition-old(' + REGION_NAME + '){' +
-            'animation:in-out ' + Math.round(motionMs * 0.6) + 'ms ' + ease + ' both}' +
-            '::view-transition-new(' + REGION_NAME + '){' +
-            'animation:in-in ' + ms + ' ' + ease + ' both}' +
-            '@keyframes in-out{to{opacity:0}}' +
-            '@keyframes in-in{from{opacity:0}to{opacity:1}}' +
-
-            '[data-in-motion="slide"] ::view-transition-new(' + REGION_NAME + ')' +
-            '{animation:in-in-slide ' + ms + ' ' + ease + ' both}' +
-            '@keyframes in-in-slide{from{opacity:0;transform:translateY(12px)}' +
-            'to{opacity:1;transform:none}}' +
-
-            '[data-in-motion="scale"] ::view-transition-new(' + REGION_NAME + ')' +
-            '{animation:in-in-scale ' + ms + ' ' + ease + ' both}' +
-            '@keyframes in-in-scale{from{opacity:0;transform:scale(.985)}' +
-            'to{opacity:1;transform:none}}' +
-
-            /* The hand-rolled fallback. */
-            '.in-fading{transition:opacity ' + Math.round(motionMs * 0.45) + 'ms ' + ease + '}' +
-            '.in-fading.in-out{opacity:0}' +
-
-            '@media(prefers-reduced-motion:reduce){' +
-            '::view-transition-old(' + REGION_NAME + '),' +
-            '::view-transition-new(' + REGION_NAME + '){animation:none}' +
-            '.in-fading{transition:none}}';
+            /* The new content is in at once and only eases in: nothing waits
+             * for the old page to be captured or to fade out first (View
+             * Transitions did, 100-500 ms before the content changed). It
+             * starts part-visible, so the region never reads as blank. */
+            '.in-enter{animation:in-in ' + ms + ' ' + ease + ' both}' +
+            '@keyframes in-in{from{opacity:.35}to{opacity:1}}' +
+            '[data-in-motion="slide"] .in-enter{animation:in-in-slide ' + ms + ' ' + ease + ' both}' +
+            '@keyframes in-in-slide{from{opacity:.35;transform:translateY(10px)}to{opacity:1;transform:none}}' +
+            '[data-in-motion="scale"] .in-enter{animation:in-in-scale ' + ms + ' ' + ease + ' both}' +
+            '@keyframes in-in-scale{from{opacity:.35;transform:scale(.99)}to{opacity:1;transform:none}}' +
+            '@media(prefers-reduced-motion:reduce){.in-enter{animation:none}}';
 
         var style = document.createElement('style');
         style.id = MOTION_STYLE;
@@ -890,65 +873,33 @@
         document.head.appendChild(style);
     }
 
-    /** Fade the region out, swap, fade it back -- for browsers without the API. */
-    function fadeThrough(host, mutate) {
-        return new Promise(function (done) {
-            var out = Math.round(motionMs * 0.45);
-
-            host.classList.add('in-fading', 'in-out');
-
-            setTimeout(function () {
-                try {
-                    mutate();
-                } finally {
-                    host.classList.remove('in-out');
-
-                    setTimeout(function () {
-                        host.classList.remove('in-fading');
-                        done();
-                    }, out);
-                }
-            }, out);
-        });
-    }
-
     /**
-     * Apply a DOM change with whatever smoothing this browser can manage.
-     * The change itself always happens; only how it is shown varies.
+     * Apply a DOM change, then let the new content ease in. The change itself
+     * happens at once; only how it is shown varies.
      */
     function commit(mutate) {
-        var host = document.querySelector(region);
-
-        if (!host || !motionWanted()) {
+        if (!document.querySelector(region) || !motionWanted()) {
             mutate();
             return Promise.resolve();
         }
 
         injectMotionStyle();
         document.documentElement.setAttribute('data-in-motion', motion);
+        mutate();
 
-        if (typeof document.startViewTransition === 'function') {
-            host.style.viewTransitionName = REGION_NAME;
+        /* Asked again: the swap may have put a new element in its place. */
+        var host = document.querySelector(region);
+        if (!host) { return Promise.resolve(); }
+        host.classList.remove('in-enter');
+        void host.offsetWidth; /* restart the animation on a second swap */
+        host.classList.add('in-enter');
 
-            var run;
-            try {
-                run = document.startViewTransition(mutate);
-            } catch (e) {
-                /* Some builds throw when one is already running. */
-                host.style.viewTransitionName = '';
-                mutate();
-                return Promise.resolve();
-            }
-
-            return run.finished.catch(function () {
-                /* A transition that was skipped or interrupted is not an
-                 * error worth surfacing: the DOM changed either way. */
-            }).then(function () {
-                host.style.viewTransitionName = '';
-            });
-        }
-
-        return fadeThrough(host, mutate);
+        return new Promise(function (done) {
+            setTimeout(function () {
+                host.classList.remove('in-enter');
+                done();
+            }, motionMs + 40);
+        });
     }
 
     /* ---------------------------------------------------------------- *
@@ -1197,7 +1148,7 @@
         });
         var host = document.querySelector(region);
         if (!host) { return; }
-        host.classList.remove('in-fading', 'in-out');
+        host.classList.remove('in-enter');
         if (host.style.display === 'none') { host.style.display = ''; }
         if (host.style.opacity === '0') { host.style.opacity = ''; }
         var cs = window.getComputedStyle(host);
@@ -1405,9 +1356,7 @@
 
         say('active (' + BUILD + ') — menu links swap in place' +
             (motionWanted()
-                ? ', ' + motion + ' ' + motionMs + 'ms' +
-                  (typeof document.startViewTransition === 'function'
-                      ? ' (view transitions)' : ' (fallback fade)')
+                ? ', ' + motion + ' ' + motionMs + 'ms (the new content eases in)'
                 : '') +
             (prefetchOn ? ', fetched on hover' : '') +
             (skeletonOn ? ', placeholder after ' + skeletonDelay + 'ms' : '') +

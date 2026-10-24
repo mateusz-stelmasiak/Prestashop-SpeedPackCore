@@ -15,10 +15,12 @@ class Smarty { public $vars=[]; function assign($a, $v = null){ $this->vars = ar
 class Context { public $link, $controller, $language, $smarty, $shop; static $c; static function getContext(){ if(!self::$c){ self::$c=new Context; self::$c->link=new Link; self::$c->controller=new FrontCtl; self::$c->language=(object)['id'=>1]; self::$c->shop=new SpcShopStub; self::$c->smarty=new Smarty; } return self::$c; } }
 class CMS { static function getCMSPages($l,$a=null,$b=true){ return []; } }
 class Db { static $q = 0; static $off = 0; static function getInstance($master = true){ return new Db; } function execute($q){ return true; } function Insert_ID(){ return 0; } function disableCache(){ self::$off++; }  function escape($s){ return addslashes((string) $s); }
-  function executeS($q){ if (strpos($q, 'category_product') !== false) return [['id_category'=>3,'name'=>'Dieta','products'=>40],['id_category'=>4,'name'=>'Kimchi','products'=>9]];
+  function executeS($q){ if (strpos($q, 'Questions') !== false) return [['Variable_name'=>'Questions','Value'=>self::$q++]];
+    if (strpos($q, 'category_product') !== false) return [['id_category'=>3,'name'=>'Dieta','products'=>40],['id_category'=>4,'name'=>'Kimchi','products'=>9]];
     if (strpos($q, 'available_for_order') !== false) return [['id_product'=>7,'name'=>'Zakwas']]; return [['id_product'=>7,'name'=>'Zakwas'],['id_product'=>8,'name'=>'Pierogi']]; }
   function getValue($q){ self::$q++; return strpos($q, 'FROM `ps_address`') !== false ? 12 : 1; }
-  function getRow($q){ return strpos($q, 'Questions') !== false ? ['Variable_name'=>'Questions','Value'=>self::$q++] : false; } }
+  // as PrestaShop does: getRow adds LIMIT 1, which SHOW STATUS refuses
+  function getRow($q){ return false; } }
 class HelperForm { public $module,$name_controller,$token,$currentIndex,$submit_action,$default_form_language,$fields_value=[],$title,$show_toolbar; function generateForm($f){ return '<form>'; } }
 class AdminController { static $currentIndex = 'index.php?controller=AdminModules'; }
 class Module { public $_errors=[]; public $name,$version,$author,$tab,$need_instance,$bootstrap,$displayName,$description,$confirmUninstall,$ps_versions_compliancy,$module_key; public static $hooks=[]; static $enabled=['speedpackcore'=>1];

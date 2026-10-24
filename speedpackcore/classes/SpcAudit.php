@@ -442,7 +442,9 @@ class SpcAudit
         $was = Configuration::get('SPC_CS_ENABLED');
         $out = ['lookups' => $lookups];
         foreach (['off' => 0, 'on' => 1] as $side => $flag) {
-            // in memory only, for this request: the saved setting is not touched
+            // in memory only, for this request: the saved setting is not touched. Every level, as
+            // the back office may read it for all shops (the global value) or for this one
+            Configuration::set('SPC_CS_ENABLED', $flag);
             Configuration::set('SPC_CS_ENABLED', $flag, $group, $shop);
             $before = self::questions();
             $start = microtime(true);
@@ -452,6 +454,7 @@ class SpcAudit
             $ms = (microtime(true) - $start) * 1000;
             $out[$side] = ['queries' => max(0, self::questions() - $before - 1), 'ms' => round($ms, 2)];
         }
+        Configuration::set('SPC_CS_ENABLED', $was);
         Configuration::set('SPC_CS_ENABLED', $was, $group, $shop);
 
         return $out;
@@ -460,9 +463,10 @@ class SpcAudit
     /** Queries this database connection has run so far (MySQL and MariaDB keep the count). */
     protected static function questions()
     {
-        $row = Db::getInstance()->getRow('SHOW SESSION STATUS LIKE \'Questions\'');
+        // executeS, not getRow: getRow adds LIMIT 1, which SHOW STATUS refuses (the count read 0)
+        $rows = Db::getInstance()->executeS('SHOW SESSION STATUS LIKE \'Questions\'', true, false);
 
-        return is_array($row) && isset($row['Value']) ? (int) $row['Value'] : 0;
+        return is_array($rows) && isset($rows[0]['Value']) ? (int) $rows[0]['Value'] : 0;
     }
 
     /**
