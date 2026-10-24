@@ -1,5 +1,17 @@
 # Changelog
 
+## SpeedPack Core 1.11.0
+
+- **A Cloudflare tab** (the zone ID and token moved there from Page cache):
+  - **Is the shop really behind Cloudflare?** The shop's own address is asked from the server (a `CF-Ray` header), next to the zone's status; a zone waiting for its name servers shows the ones to set at the registrar, with a reminder to switch DNSSEC off there first.
+  - **Visitors' own addresses** (on): requests from Cloudflare's published ranges get the visitor's address back from `CF-Connecting-IP`, first thing in the request, so statistics, the maintenance allow list and the back office's cookie IP check work behind Cloudflare. Anyone else sending the header is ignored.
+  - **Recommended settings**, now and recommended side by side, each with **Apply** and **Apply all**: SSL "Full (strict)" (only when the server's own certificate is seen to be valid for the shop, otherwise "Full", which never takes the shop down), Always use HTTPS, HTTPS rewrites, TLS 1.2, Brotli, HTTP/3, Early Hints, Rocket Loader off, development mode off.
+  - **Quick actions**: development mode (3 hours), "Under attack", Bot Fight Mode, purge everything.
+  - **DNS look**: the shop's name "DNS only", and mail sent to a proxied name (Cloudflare carries no e-mail, so mail stops).
+  - What Cloudflare says is kept 5 minutes, with "Ask Cloudflare again".
+- **Page cache keeps Link headers**: a kept page is sent with the `Link` headers it was built with (an API catalog, preloads), and nothing else of its response.
+- Tests: Cloudflare against a stand-in of its API; Link headers kept with a page.
+
 ## SpeedPack Core 1.10.1
 
 - **InstantNav is fast again: the new page shows 20–60 ms after the click, where it took 100–500 ms.** The page was fetched on hover and ready at the click, but the View Transitions API first captured the old page and only then let the content change; the speed audit even measured InstantNav slower than no speed-up. The new content now goes in at once and eases in (fade, rise or settle, as set); nothing waits for the old page to be captured or to fade out. Measured in the audit on the test shop: click to page shown 349 → 36 ms with InstantNav, 27 ms with all of SpeedPack.

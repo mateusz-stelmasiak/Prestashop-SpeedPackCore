@@ -362,6 +362,9 @@ class SpcPageCache extends SpcFeature
             header('X-SpeedPack-Cache: HIT' . ($inject !== '' ? ' cart' : ''));
             header('Age: ' . max(0, time() - (int) $meta['created']));
             header('Vary: Accept-Encoding');
+            foreach (isset($meta['links']) && is_array($meta['links']) ? $meta['links'] : [] as $link) {
+                header('Link: ' . str_replace(["\r", "\n"], '', (string) $link), false);
+            }
             if (!$plain) {
                 header('Content-Encoding: gzip');
                 header('Content-Length: ' . strlen($gz));
@@ -402,8 +405,27 @@ class SpcPageCache extends SpcFeature
         return self::write($hash, $html, [
             'controller' => $controller, 'id_object' => $object, 'shop' => (int) $context->shop->id,
             'url' => isset($_SERVER['REQUEST_URI']) ? substr((string) $_SERVER['REQUEST_URI'], 0, 255) : '',
-            'created' => $now, 'expires' => $now + $ttl,
+            'created' => $now, 'expires' => $now + $ttl, 'links' => self::linkHeaders(),
         ]);
+    }
+
+    /**
+     * The Link headers the page was sent with (modules point agents and browsers at the API
+     * catalog, preloads...), so a kept page carries them too. Nothing else: cookies and the like
+     * belong to the visitor who had the page built.
+     *
+     * @param array|null $sent the headers sent (tests); headers_list() otherwise
+     */
+    public static function linkHeaders(?array $sent = null)
+    {
+        $out = [];
+        foreach ($sent !== null ? $sent : (function_exists('headers_list') ? headers_list() : []) as $h) {
+            if (stripos($h, 'link:') === 0 && strlen($h) < 2000) {
+                $out[] = trim(substr($h, 5));
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /** Whether shoppers with a cart get kept pages (on unless switched off). */
@@ -447,7 +469,11 @@ class SpcPageCache extends SpcFeature
         }
         $gz = gzencode($html, 6);
         $tmp = $file . '.' . getmypid() . '.tmp';
-        if (@file_put_contents($tmp, json_encode(['created' => $meta['created'], 'expires' => $meta['expires']]) . "\n" . $gz) === false || !@rename($tmp, $file)) {
+        $head = ['created' => $meta['created'], 'expires' => $meta['expires']];
+        if (!empty($meta['links'])) {
+            $head['links'] = array_values($meta['links']);
+        }
+        if (@file_put_contents($tmp, json_encode($head) . "\n" . $gz) === false || !@rename($tmp, $file)) {
             @unlink($tmp);
 
             return false;
@@ -670,29 +696,6 @@ class SpcPageCache extends SpcFeature
             $n = self::flush();
             $out .= $this->displayConfirmation(sprintf($this->l('Page cache emptied (%d pages).'), $n));
         }
-        if (Tools::isSubmit('submitSpcCloudflare') || Tools::isSubmit('submitSpcCloudflareTest')) {
-            $zone = trim((string) Tools::getValue(SpcCloudflare::K_ZONE));
-            $token = trim((string) Tools::getValue(SpcCloudflare::K_TOKEN));
-            if ($zone !== '' && !preg_match('/^[a-f0-9]{32}$/i', $zone)) {
-                $out .= $this->displayError($this->l('The zone ID is 32 letters and digits (Cloudflare, the domain, Overview, on the right).'));
-            } else {
-                Configuration::updateValue(SpcCloudflare::K_ZONE, $zone);
-                // the token field shows dots once saved: dots leave the saved token as it is
-                if ($token !== '' && strpos($token, '•') === false) {
-                    Configuration::updateValue(SpcCloudflare::K_TOKEN, $token);
-                }
-                if ($zone === '') {
-                    Configuration::updateValue(SpcCloudflare::K_TOKEN, '');
-                }
-                if (Tools::isSubmit('submitSpcCloudflareTest') && SpcCloudflare::configured()) {
-                    $t = SpcCloudflare::test();
-                    $out .= $t['ok'] ? $this->displayConfirmation(sprintf($this->l('Cloudflare answers: zone %s. Cleared pages will be purged there too.'), $t['name']))
-                        : $this->displayError(sprintf($this->l('Cloudflare did not accept it: %s'), $t['error']));
-                } else {
-                    $out .= $this->displayConfirmation($this->l('Settings updated.'));
-                }
-            }
-        }
         $test = null;
         if (Tools::isSubmit('submitSpcPageCacheTest')) {
             $test = $this->explainTest(self::selfTest($this->context));
@@ -792,39 +795,6 @@ class SpcPageCache extends SpcFeature
                 ['type' => 'submit', 'name' => 'submitSpcPageCacheFlush', 'title' => $this->l('Empty the page cache'), 'icon' => 'process-icon-eraser', 'class' => 'pull-left'],
                 ['type' => 'submit', 'name' => 'submitSpcPageCacheTest', 'title' => $this->l('Test as a visitor'), 'icon' => 'process-icon-preview', 'class' => 'pull-left'],
             ],
-        ]]]) . $this->cloudflareForm();
-    }
-
-    /** Cloudflare: the zone and the token, a test, and the last purge. */
-    protected function cloudflareForm()
-    {
-        $helper = new HelperForm();
-        $helper->module = $this->module;
-        $helper->name_controller = $this->name;
-        $helper->token = Tools::getAdminTokenLite('AdminModules');
-        $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
-        $helper->submit_action = 'submitSpcCloudflare';
-        $helper->default_form_language = (int) Configuration::get('PS_LANG_DEFAULT');
-        $helper->fields_value = [
-            SpcCloudflare::K_ZONE => (string) Configuration::get(SpcCloudflare::K_ZONE),
-            SpcCloudflare::K_TOKEN => (string) Configuration::get(SpcCloudflare::K_TOKEN) !== '' ? str_repeat('•', 12) : '',
-        ];
-        $last = json_decode((string) Configuration::get(SpcCloudflare::K_LAST), true);
-        $desc = $this->l('When the shop sits behind Cloudflare: the pages cleared here are purged there too, and "Clear cache" purges it whole. An API token with the Cache Purge permission for the zone (Cloudflare, My Profile, API Tokens).');
-        if (is_array($last)) {
-            $desc .= ' ' . sprintf($this->l('Last purge: %1$s, %2$s.'), $last['at'], $last['ok'] ? $this->l('done') : sprintf($this->l('refused (%s)'), $last['error']));
-        }
-
-        return $helper->generateForm([['form' => [
-            'id_form' => 'spc-cloudflare',
-            'legend' => ['title' => 'Cloudflare', 'icon' => 'icon-cloud'],
-            'description' => $desc,
-            'input' => [
-                ['type' => 'text', 'name' => SpcCloudflare::K_ZONE, 'label' => $this->l('Zone ID'), 'class' => 'fixed-width-xxl'],
-                ['type' => 'text', 'name' => SpcCloudflare::K_TOKEN, 'label' => $this->l('API token'), 'class' => 'fixed-width-xxl', 'desc' => $this->l('Kept on the server; shown as dots once saved.')],
-            ],
-            'submit' => ['title' => $this->l('Save')],
-            'buttons' => [['type' => 'submit', 'name' => 'submitSpcCloudflareTest', 'title' => $this->l('Save and test'), 'icon' => 'process-icon-ok', 'class' => 'pull-left']],
         ]]]);
     }
 }

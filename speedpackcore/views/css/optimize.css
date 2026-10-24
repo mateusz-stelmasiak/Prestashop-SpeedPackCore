@@ -27,3 +27,8 @@
 .spc-warm-state { margin-left: 10px; color: #6c868e; }
 .spc-warm-bar { height: 6px; margin: 4px 0 10px; border-radius: 3px; background: #eef1f3; overflow: hidden; }
 .spc-warm-bar span { display: block; width: 0; height: 100%; background: #25b9d7; transition: width .3s; }
+
+/* the Cloudflare tab */
+.spc-cf-table td { vertical-align: top; }
+.spc-cf-table small.help-block { margin: 2px 0 0; max-width: 560px; }
+.spc-cf-actions .btn { margin: 0 6px 6px 0; }

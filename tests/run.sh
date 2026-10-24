@@ -45,6 +45,7 @@ step "php: module (install, settings)" php php/unit.php
 step "php: AsyncCart" php php/asynccart.php
 step "php: Optimize page steps" php php/html.php
 step "php: picture compression" php php/compress.php
+CF=$(port); CF_MOCK_STATE="$WORK/cf-state.json" serve "$CF" php -S "127.0.0.1:$CF" "$T/php/mock/cloudflare-api.php" && step "php: Cloudflare (addresses, DNS, API)" php php/cloudflare.php "$CF"
 if php -r 'exit(class_exists("Redis") ? 0 : 1);' && (exec 3<>/dev/tcp/127.0.0.1/"${REDIS_PORT:-6390}") 2>/dev/null; then
   step "php: data cache (Redis)" php php/cache.php
 else skipped "php: data cache (Redis)" "no Redis on ${REDIS_PORT:-6390} or no phpredis"; fi

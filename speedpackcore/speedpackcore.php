@@ -42,6 +42,7 @@ require_once dirname(__FILE__) . '/classes/SpcCompress.php';
 require_once dirname(__FILE__) . '/classes/SpcPageCache.php';
 require_once dirname(__FILE__) . '/classes/SpcWarm.php';
 require_once dirname(__FILE__) . '/classes/SpcCloudflare.php';
+require_once dirname(__FILE__) . '/classes/SpcCloudflareTab.php';
 require_once dirname(__FILE__) . '/classes/SpcOptimize.php';
 
 class SpeedPackCore extends Module
@@ -72,6 +73,9 @@ class SpeedPackCore extends Module
     /** @var SpcPageCache */
     private $pageCache;
 
+    /** @var SpcCloudflareTab */
+    private $cloudflare;
+
     /** @var SpcOptimize */
     private $optimize;
 
@@ -100,7 +104,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.10.1';
+        $this->version = '1.11.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -115,6 +119,7 @@ class SpeedPackCore extends Module
 
         $this->cache = new SpcCache($this, $this->context, 'Cache');
         $this->pageCache = new SpcPageCache($this, $this->context, $this->l('Page cache'));
+        $this->cloudflare = new SpcCloudflareTab($this, $this->context, 'Cloudflare');
         $this->optimize = new SpcOptimize($this, $this->context, $this->l('Optimize'));
         $this->smartPrefetch = new SpcSmartPrefetch($this, $this->context, 'SmartPrefetch');
         $this->instantNav = new SpcInstantNav($this, $this->context, 'InstantNav');
@@ -130,6 +135,7 @@ class SpeedPackCore extends Module
         return [
             'cache' => $this->cache,
             'pagecache' => $this->pageCache,
+            'cloudflare' => $this->cloudflare,
             'optimize' => $this->optimize,
             'smartprefetch' => $this->smartPrefetch,
             'instantnav' => $this->instantNav,
@@ -201,6 +207,8 @@ class SpeedPackCore extends Module
     /** First thing on a shop request: the configuration an audit request asks for (SpcAudit::apply). */
     public function hookActionDispatcherBefore($params)
     {
+        // first of all: the visitor's own address behind Cloudflare, before anything reads it
+        SpcCloudflare::realIp();
         // written before any answer is sent early (SpcWarm::letVisitorGo)
         SpcWarm::$cookie = isset($this->context->cookie) ? $this->context->cookie : null;
         // the back office is never measured, even from a browser that carries the audit cookie
@@ -576,6 +584,7 @@ class SpeedPackCore extends Module
         $forms = [
             'cache' => ['submitSpcCache', 'submitSpcBuiltin', 'submitSpcFlush', 'submitSpcOpcache'],
             'pagecache' => ['submitSpcPageCache', 'submitSpcPageCacheFlush'],
+            'cloudflare' => SpcCloudflareTab::SUBMITS,
             'optimize' => ['submitSpcOptimize', 'submitSpcCriticalClear'],
             'smartprefetch' => ['submitsmartprefetch'],
             'instantnav' => ['submitinstantnav'],
@@ -635,10 +644,11 @@ class SpeedPackCore extends Module
     {
         $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
         $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
-        $names = ['cache' => 'Cache', 'pagecache' => $this->pageCache->displayName, 'optimize' => $this->optimize->displayName, 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
+        $names = ['cache' => 'Cache', 'pagecache' => $this->pageCache->displayName, 'cloudflare' => 'Cloudflare', 'optimize' => $this->optimize->displayName, 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
         $what = [
             'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
             'pagecache' => $this->l('Whole pages ready for visitors.'),
+            'cloudflare' => $this->l('The zone checked and tuned for PrestaShop, visitors\' own addresses.'),
             'optimize' => $this->l('Smaller pictures, lazy loading, critical CSS.'),
             'smartprefetch' => $this->l('The next page before the click.'),
             'instantnav' => $this->l('Menu clicks without a reload.'),

@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.10.1.zip"><img alt="Download 1.10.1" src="https://img.shields.io/badge/download-speedpackcore--1.10.1.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.11.0.zip"><img alt="Download 1.11.0" src="https://img.shields.io/badge/download-speedpackcore--1.11.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.10.1" src="https://img.shields.io/badge/version-1.10.1-17201e">
+  <img alt="Version 1.11.0" src="https://img.shields.io/badge/version-1.11.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -88,6 +88,15 @@ Visitors who are not signed in (with or without a cart) get catalogue pages read
 - **Warmed again** *(1.8)*: the pages a change clears are queued and opened again in the background after a visitor has their page (PHP-FPM), so the next one gets them ready; **Warm the whole catalogue now** on the settings page, and a cron address (with a key) that works the queue and then the catalogue, about 25 seconds a call
 - **Cloudflare kept in step** *(1.9)*: with the zone ID and an API token (Cache Purge permission), the addresses cleared here are purged at Cloudflare too (30 a call), and emptying the cache purges the zone; sent after the page has gone out, with **Test the connection** and the last purge on the settings page
 - The speed audit's own requests are never kept; they get a kept page only when they ask for every part on, which is how the audit measures the page cache against the shop built without SpeedPack
+
+### Cloudflare · *new in 1.11*
+
+- **Is the shop really behind it?** Asked from the server (a `CF-Ray` header), next to the zone's status; a pending zone shows the name servers to set, with the DNSSEC warning
+- **Visitors' own addresses** behind Cloudflare (only from Cloudflare's published ranges, so it cannot be faked): statistics, the maintenance allow list and the back office's cookie IP check work again
+- **Recommended zone settings** with Apply / Apply all: SSL Full (strict) when the server's certificate is valid (Full otherwise), Always HTTPS, TLS 1.2, Brotli, HTTP/3, Early Hints, Rocket Loader off
+- **Quick actions:** development mode, "Under attack", Bot Fight Mode, purge everything
+- **DNS look:** the shop's record "DNS only", and MX pointing at a proxied name (mail would stop)
+- Token permissions: Zone Read, Zone Settings Edit, DNS Read, Cache Purge (and Bot Management Edit for Bot Fight Mode)
 
 ### Optimize – lighter pages · *new in 1.7*
 
@@ -266,7 +275,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.10.1.zip](dist/speedpackcore-1.10.1.zip)**.
+1. Download **[speedpackcore-1.11.0.zip](dist/speedpackcore-1.11.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -313,7 +322,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache de pages (1.7) :** les pages du catalogue prêtes pour les visiteurs non connectés et sans panier, en quelques millisecondes ; vidées quand un produit, son stock ou son prix change.
 - **Optimize (1.7) :** images WebP et AVIF, chargement différé des images, CSS critique, scripts différés dans leur ordre, HTML minifié, en-têtes de cache et compression dans `.htaccess`.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.10.1.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.11.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -331,7 +340,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache stron (1.7):** strony katalogu gotowe dla niezalogowanych gości bez koszyka, w kilka milisekund; czyszczone, gdy zmieni się produkt, jego stan lub cena.
 - **Optimize (1.7):** zdjęcia WebP i AVIF, leniwe ładowanie zdjęć, critical CSS, skrypty odroczone w swojej kolejności, zminifikowany HTML, nagłówki cache i kompresja w `.htaccess`.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.10.1.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.11.0.zip`, potem Konfiguruj.
 </details>
 
 ---

@@ -94,6 +94,14 @@ ok(SpcPageCache::write($k, $html, ['controller' => 'product', 'id_object' => 7, 
 $page = SpcPageCache::read($k, $t0 + 10);
 ok($page !== null && gzdecode($page[1]) === $html && $page[0]['created'] === $t0, 'and read back as it was (gzipped)');
 ok(SpcPageCache::read($k, $t0 + 3601) === null, 'not after it expired');
+$links = SpcPageCache::linkHeaders(['Content-Type: text/html', 'Link: </.well-known/api-catalog>; rel="api-catalog"', 'Set-Cookie: PrestaShop-1=x', 'link: </llms.txt>; rel="describedby"']);
+ok($links === ['</.well-known/api-catalog>; rel="api-catalog"', '</llms.txt>; rel="describedby"'], 'the Link headers of a built page are picked out, nothing else (no cookie)');
+$kl = str_repeat('c', 40);
+SpcPageCache::write($kl, $html, ['controller' => 'index', 'id_object' => 0, 'shop' => 1, 'url' => '/pl/', 'created' => $t0, 'expires' => $t0 + 3600, 'links' => $links]);
+$pl = SpcPageCache::read($kl, $t0 + 10);
+ok($pl[0]['links'] === $links && gzdecode($pl[1]) === $html, 'a kept page keeps its Link headers, to send them again with it');
+@unlink(SpcPageCache::file($kl));
+Db::getInstance()->execute('DELETE FROM ' . SpcPageCache::table() . " WHERE id_entry = '" . $kl . "'"); // out of the figures below
 $keys = [];
 foreach ([['category', 3, '/pl/3-kiszonki'], ['category', 5, '/pl/5-soki'], ['index', 0, '/pl/'], ['cms', 4, '/pl/content/4-o-nas'], ['product', 8, '/pl/8-sok.html'], ['manufacturer', 2, '/pl/brand/2-alhambra']] as $p) {
     $kk = SpcPageCache::key($p[0], $req(['uri' => $p[2]]));
