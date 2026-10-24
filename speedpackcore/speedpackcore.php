@@ -99,7 +99,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.9.3';
+        $this->version = '1.9.4';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -200,6 +200,8 @@ class SpeedPackCore extends Module
     /** First thing on a shop request: the configuration an audit request asks for (SpcAudit::apply). */
     public function hookActionDispatcherBefore($params)
     {
+        // written before any answer is sent early (SpcWarm::letVisitorGo)
+        SpcWarm::$cookie = isset($this->context->cookie) ? $this->context->cookie : null;
         // the back office is never measured, even from a browser that carries the audit cookie
         if (isset($params['controller_type']) && (int) $params['controller_type'] === Dispatcher::FC_ADMIN) {
             return;

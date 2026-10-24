@@ -9,6 +9,7 @@ define('_DB_PREFIX_', 'pct_');
 define('_PS_CACHE_DIR_', SPC_TMP . '/cache/');
 define('_PS_ROOT_DIR_', SPC_TMP . '/root');
 
+class Cookie { public $written = 0; function write() { $this->written++; } }
 class Db
 {
     static $i; public $pdo;
@@ -119,6 +120,13 @@ ok(count(SpcWarm::queue()) === 7 && count(array_unique(SpcWarm::queue())) === 7,
 $before = SpcWarm::queue();
 ok(SpcWarm::take(2) === array_slice($before, 0, 2) && SpcWarm::queue() === array_slice($before, 2), 'taking pages takes the first ones out of the queue');
 ok(SpcWarm::urlsOf([['url' => '/pl/3-kiszonki?utm_source=fb&page=2&spc_t=9', 'id_shop' => 1], ['url' => 'x', 'id_shop' => 1]]) === ['https://shop.test/pl/3-kiszonki?page=2'], 'a queued address keeps its page, not campaign or audit tags');
+// the answer may leave early (PHP-FPM) only with the shop's cookie written: PrestaShop's own write comes later and is skipped then
+SpcWarm::$cookie = new Cookie();
+SpcWarm::letVisitorGo();
+ok(SpcWarm::$cookie->written === 1, 'before the answer leaves early, the shop cookie is written (a sign-in keeps its session)');
+SpcWarm::$cookie = null;
+SpcWarm::letVisitorGo();
+ok(true, 'no cookie to write (a request without one): the answer still goes');
 Configuration::$v[SpcWarm::K_ENABLED] = 0;
 ok(SpcWarm::push(['https://shop.test/pl/9-x.html']) === 0, 'warming switched off: nothing is queued');
 Configuration::$v[SpcWarm::K_ENABLED] = 1;

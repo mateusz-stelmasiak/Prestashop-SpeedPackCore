@@ -121,6 +121,9 @@ class SpcWarm
         return array_values(array_unique($out));
     }
 
+    /** @var Cookie|null the request's PrestaShop cookie, written before the answer goes (letVisitorGo) */
+    public static $cookie;
+
     /** @var array shop id => scheme and host, worked out once (tests may set them) */
     public static $bases = [];
 
@@ -237,7 +240,7 @@ class SpcWarm
         }
         Configuration::updateGlobalValue(self::K_LOCK, $now);
         register_shutdown_function(function () {
-            fastcgi_finish_request(); // there, checked above
+            SpcWarm::letVisitorGo();
             @set_time_limit(30);
             ignore_user_abort(true);
             SpcWarm::work(SpcWarm::PER_VISIT, SpcWarm::VISIT_SECONDS);
@@ -245,6 +248,24 @@ class SpcWarm
         });
 
         return true;
+    }
+
+    /**
+     * Sends the visitor their answer now, so work can go on after it (PHP-FPM).
+     *
+     * PrestaShop writes its cookie last, when the request's objects are destroyed, and skips it
+     * once the answer is out; that runs after shutdown functions. Without this the cookie of the
+     * request was lost: a customer who had just signed in kept a cookie without their new
+     * session and was signed out on the next page, a new cart was forgotten.
+     */
+    public static function letVisitorGo()
+    {
+        if (self::$cookie instanceof Cookie) {
+            self::$cookie->write();
+        }
+        if (function_exists('fastcgi_finish_request') && PHP_SAPI !== 'cli') {
+            fastcgi_finish_request();
+        }
     }
 
     /* ------------------------------------------------------------------ *

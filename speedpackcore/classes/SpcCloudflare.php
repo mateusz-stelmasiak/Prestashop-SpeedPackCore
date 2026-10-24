@@ -73,9 +73,7 @@ class SpcCloudflare
         if (!self::$all && !self::$pending) {
             return [];
         }
-        if (function_exists('fastcgi_finish_request') && PHP_SAPI !== 'cli') {
-            @fastcgi_finish_request();
-        }
+        SpcWarm::letVisitorGo();
         $answers = [];
         if (self::$all) {
             $answers[] = self::call('POST', '/purge_cache', ['purge_everything' => true]);

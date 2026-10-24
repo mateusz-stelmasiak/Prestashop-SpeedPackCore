@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.9.4
+
+- **Fix: customers could not stay signed in on PHP-FPM hosts** (and a new cart or other cookie change could be forgotten). When the page cache warmer had pages queued, or a Cloudflare purge was pending, the visitor's answer was sent early (`fastcgi_finish_request`) in a shutdown function. PrestaShop writes its cookie later, when the request's objects are destroyed, and skips it once the answer is out: the sign-in kept a cookie without the new customer session (PrestaShop 1.7.8 checks it on every page), so the next page signed the customer out again. The cookie is now written before the answer goes. Servers without PHP-FPM (Apache mod_php) were never affected.
+
 ## SpeedPack Core 1.9.3
 
 - **Fix: WebP and AVIF copies answered 403 Forbidden.** They were written to a temporary file and renamed, so they kept PHP's own umask – 0600 on many hosts, where the web server runs as another user and cannot read them. Each copy now gets its picture's permissions and is readable by all, like any picture. The upgrade repairs every copy already made, and "Make copies" repairs any it passes.
