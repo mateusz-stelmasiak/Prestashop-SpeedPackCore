@@ -57,7 +57,7 @@ class SpcOptimize extends SpcFeature
 
     protected static function defaults()
     {
-        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0, self::K_DELAY => 0, self::K_DIMS => 1, self::K_FONTS => 1];
+        return [self::K_ENABLED => 0, self::K_WEBP => 1, self::K_AVIF => 0, self::K_QUALITY => 82, self::K_LAZY => 1, self::K_DEFER => 0, self::K_CRITICAL => 1, self::K_MINIFY => 1, self::K_HEADERS => 0, self::K_DELAY => 0, self::K_DIMS => 1, self::K_FONTS => 1, SpcCompress::K_AUTO => 0];
     }
 
     public function install()
@@ -81,7 +81,7 @@ class SpcOptimize extends SpcFeature
     public function uninstall()
     {
         self::headers(false);
-        foreach (array_merge(array_keys(self::defaults()), [self::K_DELAY_LIST, self::K_DELAY_TIMEOUT, self::K_CDN]) as $k) {
+        foreach (array_merge(array_keys(self::defaults()), [self::K_DELAY_LIST, self::K_DELAY_TIMEOUT, self::K_CDN, SpcCompress::K_ENGINE, SpcCompress::K_KEY, SpcCompress::K_QUALITY, SpcCompress::K_STATS, SpcCompress::K_TINY_COUNT]) as $k) {
             Configuration::deleteByName($k);
         }
         foreach (self::CRITICAL_PAGES as $p) {
@@ -247,13 +247,19 @@ class SpcOptimize extends SpcFeature
     /** New product pictures (after PrestaShop made their sizes): their copies at once. */
     public function hookActionWatermark($params)
     {
-        if (!self::enabled() || empty($params['id_image'])) {
+        if (empty($params['id_image'])) {
             return;
         }
-        foreach (SpcImages::productFiles((int) $params['id_image']) as $file) {
-            foreach (self::formatsToMake() as $format) {
-                SpcImages::convert($file, $format, (int) Configuration::get(self::K_QUALITY) ?: 82);
+        if (self::enabled()) {
+            foreach (SpcImages::productFiles((int) $params['id_image']) as $file) {
+                foreach (self::formatsToMake() as $format) {
+                    SpcImages::convert($file, $format, (int) Configuration::get(self::K_QUALITY) ?: 82);
+                }
             }
+        }
+        // after the copies, so they are made from the original; the picture keeps its date
+        if (self::on(SpcCompress::K_AUTO)) {
+            SpcCompress::image((int) $params['id_image']);
         }
     }
 
@@ -261,6 +267,7 @@ class SpcOptimize extends SpcFeature
     {
         if (!empty($params['object']) && !empty($params['object']->id)) {
             SpcImages::forget((int) $params['object']->id);
+            SpcCompress::forget((int) $params['object']->id);
         }
     }
 
@@ -478,6 +485,14 @@ NG;
             case 'images':
                 $answer = SpcImages::step((int) Tools::getValue('offset'), 15, self::formatsToMake(), (int) Configuration::get(self::K_QUALITY) ?: 82);
                 break;
+            case 'compress':
+                // TinyPNG answers in about a second a picture: fewer at a time
+                $answer = SpcCompress::step((int) Tools::getValue('offset'), SpcCompress::engine() === 'tinypng' ? 2 : 10);
+                $answer['count'] = SpcCompress::tinyCount();
+                break;
+            case 'restore':
+                $answer = SpcCompress::restore(300);
+                break;
             case 'critical_plan':
                 $answer = ['pages' => $this->criticalPlan()];
                 break;
@@ -501,7 +516,7 @@ NG;
         if (!$this->isRegisteredInHook('actionOutputHTMLBefore') || !$this->isRegisteredInHook('actionWatermark')) {
             $this->registerHooks();
         }
-        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DIMS, self::K_DEFER, self::K_DELAY, self::K_CRITICAL, self::K_FONTS, self::K_MINIFY, self::K_HEADERS];
+        $keys = [self::K_ENABLED, self::K_WEBP, self::K_AVIF, self::K_LAZY, self::K_DIMS, self::K_DEFER, self::K_DELAY, self::K_CRITICAL, self::K_FONTS, self::K_MINIFY, self::K_HEADERS, SpcCompress::K_AUTO];
         if (Tools::isSubmit('submitSpcOptimize')) {
             $q = (int) Tools::getValue(self::K_QUALITY);
             if ($q < 40 || $q > 95) {
@@ -511,6 +526,14 @@ NG;
                     Configuration::updateValue($k, Tools::getValue($k) ? 1 : 0);
                 }
                 Configuration::updateValue(self::K_QUALITY, $q);
+                Configuration::updateValue(SpcCompress::K_ENGINE, Tools::getValue(SpcCompress::K_ENGINE) === 'tinypng' ? 'tinypng' : 'local');
+                $cq = (int) Tools::getValue(SpcCompress::K_QUALITY);
+                Configuration::updateValue(SpcCompress::K_QUALITY, $cq >= 40 && $cq <= 95 ? $cq : 82);
+                // the key field shows dots once saved: dots leave the saved key as it is
+                $key = trim((string) Tools::getValue(SpcCompress::K_KEY));
+                if (strpos($key, '•') === false) {
+                    Configuration::updateValue(SpcCompress::K_KEY, preg_replace('/[^A-Za-z0-9_-]/', '', $key));
+                }
                 $list = trim(str_replace("\r", '', (string) Tools::getValue(self::K_DELAY_LIST)));
                 Configuration::updateValue(self::K_DELAY_LIST, $list === trim(self::DELAY_DEFAULT) ? '' : $list);
                 Configuration::updateValue(self::K_DELAY_TIMEOUT, max(0, min(60, (int) Tools::getValue(self::K_DELAY_TIMEOUT))));
@@ -556,6 +579,14 @@ NG;
             'server' => self::server(),
             'headers' => self::headersWritten(),
             'nginx' => self::nginxSnippet(),
+            'compress' => [
+                'engine' => SpcCompress::engine(),
+                'can' => SpcCompress::can(),
+                'stats' => SpcCompress::stats(),
+                'kb' => (int) round((SpcCompress::stats()['before'] - SpcCompress::stats()['after']) / 1024),
+                'count' => SpcCompress::tinyCount(),
+                'backups' => is_dir(SpcCompress::backupRoot()),
+            ],
             'texts' => json_encode([
                 'converting' => $this->l('Converting: %1$d of %2$d images'),
                 'converted' => $this->l('Done: %1$d copies made, %2$s smaller.'),
@@ -565,6 +596,13 @@ NG;
                 'blocked' => $this->l('The shop pages could not be read from the back office (is the back office on another address than the shop?).'),
                 'failed' => $this->l('Stopped: %s'),
                 'names' => $names,
+                'compressing' => $this->l('Compressing: %1$d of %2$d images'),
+                'compressed' => $this->l('Done: %1$d pictures, %2$s smaller.'),
+                'compressNone' => $this->l('Nothing to compress: every picture is already as small as it gets.'),
+                'tinyCount' => $this->l('TinyPNG this month: %d of 500 free.'),
+                'restoring' => $this->l('Putting originals back: %d so far...'),
+                'restored' => $this->l('Every original is back (%d pictures).'),
+                'restoreAsk' => $this->l('Put every compressed picture back as it was?'),
             ]),
         ]]);
 
@@ -587,6 +625,9 @@ NG;
         $t = Configuration::get(self::K_DELAY_TIMEOUT);
         $helper->fields_value[self::K_DELAY_TIMEOUT] = $t === false ? 10 : (int) $t;
         $helper->fields_value[self::K_CDN] = (string) Configuration::get(self::K_CDN);
+        $helper->fields_value[SpcCompress::K_ENGINE] = SpcCompress::engine();
+        $helper->fields_value[SpcCompress::K_QUALITY] = SpcCompress::quality();
+        $helper->fields_value[SpcCompress::K_KEY] = (string) Configuration::get(SpcCompress::K_KEY) !== '' ? str_repeat('•', 12) : '';
 
         return $out . $helper->generateForm([['form' => [
             'id_form' => 'spc-optimize',
@@ -596,6 +637,13 @@ NG;
                 $switch(self::K_WEBP, $this->l('WebP pictures'), $this->l('Browsers that take WebP get the WebP copy of a picture (about a third smaller). Make the copies with "Convert pictures" above; new product pictures get theirs at once.')),
                 $switch(self::K_AVIF, $this->l('AVIF pictures'), $can['avif'] ? $this->l('Smaller still, for browsers that take AVIF; slower to make.') : $this->l('This server cannot write AVIF (PHP 8.1 with GD built with AVIF is needed).')),
                 ['type' => 'text', 'name' => self::K_QUALITY, 'label' => $this->l('Picture quality'), 'class' => 'fixed-width-sm', 'desc' => $this->l('40 to 95; 82 looks the same as the original to most eyes.')],
+                ['type' => 'select', 'name' => SpcCompress::K_ENGINE, 'label' => $this->l('Compress pictures with'), 'options' => ['query' => [
+                    ['id' => 'local', 'name' => $this->l('This server (free, PHP GD)')],
+                    ['id' => 'tinypng', 'name' => $this->l('TinyPNG (smaller still, 500 pictures a month free)')],
+                ], 'id' => 'id', 'name' => 'name'], 'desc' => $this->l('Makes the JPEG and PNG pictures themselves smaller, for every browser, feed and e-mail; "Compress pictures" above runs it. The originals are kept and can be put back.')],
+                ['type' => 'text', 'name' => SpcCompress::K_QUALITY, 'label' => $this->l('JPEG quality on this server'), 'class' => 'fixed-width-sm', 'desc' => $this->l('40 to 95; 82 looks the same to most eyes. PNG pictures stay lossless.')],
+                ['type' => 'text', 'name' => SpcCompress::K_KEY, 'label' => $this->l('TinyPNG API key'), 'class' => 'fixed-width-xxl', 'desc' => $this->l('Free at tinypng.com/developers. Each picture size counts as one picture. Kept on the server; shown as dots once saved; empty it to remove it.')],
+                $switch(SpcCompress::K_AUTO, $this->l('Compress new pictures'), $this->l('A product picture added or regenerated is compressed at once, after its WebP and AVIF copies are made from the original.')),
                 $switch(self::K_DIMS, $this->l('Picture sizes'), $this->l('Shop pictures without a width and height get them (from their image type, and the logo from the shop settings), so the page does not jump while they load (layout shift, CLS).')),
                 $switch(self::K_LAZY, $this->l('Lazy loading'), $this->l('Pictures and videos below the top of the page load as they come into view; the main product picture is asked for first.')),
                 $switch(self::K_CRITICAL, $this->l('Critical CSS'), $this->l('The CSS for the top of the page inline, the rest loaded without holding up the first paint. Made with "Make critical CSS" above; used only while the theme stylesheets stay as they were.')),

@@ -74,6 +74,59 @@
         });
     }
 
+    function compress(box, t) {
+        var btn = box.querySelector('[data-spc-compress]');
+        var state = box.querySelector('[data-spc-compress-state]');
+        var bar = box.querySelector('[data-spc-compress-bar]');
+        var files = 0;
+        var saved = 0;
+        var error = '';
+        var count = null;
+        btn.disabled = true;
+        bar.hidden = false;
+        function step(offset) {
+            return post(box.getAttribute('data-url'), { op: 'compress', offset: offset }).then(function (a) {
+                files += a.files;
+                saved += a.saved;
+                if (a.error) { error = a.error; }
+                if (a.count !== null && a.count !== undefined) { count = a.count; }
+                bar.firstChild.style.width = Math.min(100, Math.round(100 * a.offset / Math.max(1, a.total))) + '%';
+                state.textContent = fmt(t.compressing, Math.min(a.offset, a.total), a.total);
+                return a.done ? null : step(a.offset);
+            });
+        }
+        step(0).then(function () {
+            state.textContent = (files ? fmt(t.compressed, files, size(saved)) : t.compressNone)
+                + (count !== null ? ' ' + fmt(t.tinyCount, count) : '')
+                + (error ? ' ' + fmt(t.failed, error) : '');
+        }).catch(function (e) {
+            state.textContent = fmt(t.failed, e.message);
+        }).then(function () {
+            btn.disabled = false;
+        });
+    }
+
+    function restore(box, t, link) {
+        if (!window.confirm(t.restoreAsk)) { return; }
+        var state = box.querySelector('[data-spc-compress-state]');
+        var total = 0;
+        link.disabled = true;
+        function step() {
+            return post(box.getAttribute('data-url'), { op: 'restore' }).then(function (a) {
+                total += a.restored;
+                state.textContent = fmt(t.restoring, total);
+                return a.left > 0 && a.restored > 0 ? step() : null;
+            });
+        }
+        step().then(function () {
+            state.textContent = fmt(t.restored, total);
+            link.hidden = true;
+        }).catch(function (e) {
+            state.textContent = fmt(t.failed, e.message);
+            link.disabled = false;
+        });
+    }
+
     /* ---------------------------------------------------------------- *
      *  Critical CSS
      * ---------------------------------------------------------------- */
@@ -357,6 +410,10 @@
         try { t = JSON.parse(box.getAttribute('data-texts')) || {}; } catch (e) { /* the defaults below */ }
         var c = box.querySelector('[data-spc-convert]');
         if (c) { c.addEventListener('click', function () { convert(box, t); }); }
+        var z = box.querySelector('[data-spc-compress]');
+        if (z) { z.addEventListener('click', function () { compress(box, t); }); }
+        var r = box.querySelector('[data-spc-restore]');
+        if (r) { r.addEventListener('click', function () { restore(box, t, r); }); }
         var k = box.querySelector('[data-spc-critical]');
         if (k) { k.addEventListener('click', function () { critical(box, t); }); }
     }

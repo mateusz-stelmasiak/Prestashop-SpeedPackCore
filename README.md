@@ -1,12 +1,12 @@
 <p align="center"><img src="media/cover.png" alt="SpeedPack Core – five speed-ups for PrestaShop in one module" width="100%"></p>
 
 <p align="center">
-  <a href="dist/speedpackcore-1.9.4.zip"><img alt="Download 1.9.4" src="https://img.shields.io/badge/download-speedpackcore--1.9.4.zip-1f7a72?style=for-the-badge"></a>
+  <a href="dist/speedpackcore-1.10.0.zip"><img alt="Download 1.10.0" src="https://img.shields.io/badge/download-speedpackcore--1.10.0.zip-1f7a72?style=for-the-badge"></a>
 </p>
 <p align="center">
   <img alt="PrestaShop 1.7.6 – 9.x" src="https://img.shields.io/badge/PrestaShop-1.7.6%20%E2%80%93%209.x-df0067">
   <img alt="PHP 7.1+" src="https://img.shields.io/badge/PHP-7.1%2B-777bb4">
-  <img alt="Version 1.9.4" src="https://img.shields.io/badge/version-1.9.4-17201e">
+  <img alt="Version 1.10.0" src="https://img.shields.io/badge/version-1.10.0-17201e">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-17201e">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-0-17201e">
 </p>
@@ -94,6 +94,7 @@ Visitors who are not signed in (with or without a cart) get catalogue pages read
 Each step works on the page PrestaShop built (`actionOutputHTMLBefore`), so the page cache keeps the result. Off until you switch it on; each step has its own switch.
 
 - **WebP and AVIF pictures:** a copy next to every product, category and brand picture, made in steps from the settings page and at once for new product pictures, kept only when it is smaller. Browsers that take the format get the copy; the others, and pictures regenerated since, get the original
+- **Compress pictures** *(1.10)*: the JPEG and PNG pictures themselves made smaller, for every browser, feed and e-mail – **on this server** (PHP GD: JPEG at the quality you set, progressive, camera data dropped; PNG lossless) or with **TinyPNG** (your own API key, 500 pictures a month free). Kept only when 3 per cent smaller or more; the originals are kept in `var/speedpack-originals/` and **Restore originals** puts them back. Optionally, new product pictures are compressed at once, after their WebP copies are made from the original
 - **Lazy loading:** pictures and frames below the first two of the content load as they come into view; the main product picture is asked for first (`fetchpriority="high"`)
 - **Picture sizes** *(1.9, on)*: product, category and brand pictures and the logo without `width` and `height` get them from their image type, so nothing jumps while they load (CLS); a rule keeps their shape when the theme makes them fluid
 - **Critical CSS:** made in your browser from four real pages of the shop (home, a category, a product, a CMS page) at computer and phone width – the rules the first screen needs, `@media` blocks judged at the width they apply to, font and picture addresses made absolute. It goes inline and the theme stylesheets load without holding up the first paint; it is used only while the page has the stylesheets it was made from
@@ -265,7 +266,7 @@ Shops differ: the theme, the modules and the server decide the real numbers. The
 
 ## Installation
 
-1. Download **[speedpackcore-1.9.4.zip](dist/speedpackcore-1.9.4.zip)**.
+1. Download **[speedpackcore-1.10.0.zip](dist/speedpackcore-1.10.0.zip)**.
 2. In the back office, go to **Modules > Module Manager > Upload a module** and choose the zip.
 3. Click **Install**. SmartPrefetch, InstantNav, InstantCart and CartSpeed are switched on with their defaults; the data cache stays off until you choose one.
 4. Click **Configure**: the **Overview** shows every part with its status and a switch, and the result of the last speed audit; each part has its own tab with its settings. To use Redis, enter its host and password under **Cache** and press **Save and test**.
@@ -312,7 +313,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache de pages (1.7) :** les pages du catalogue prêtes pour les visiteurs non connectés et sans panier, en quelques millisecondes ; vidées quand un produit, son stock ou son prix change.
 - **Optimize (1.7) :** images WebP et AVIF, chargement différé des images, CSS critique, scripts différés dans leur ordre, HTML minifié, en-têtes de cache et compression dans `.htaccess`.
 
-**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.9.4.zip`, puis Configurer.
+**Installation :** Modules > Gestionnaire de modules > Installer un module, choisissez `speedpackcore-1.10.0.zip`, puis Configurer.
 </details>
 
 <details>
@@ -330,7 +331,7 @@ SpeedPack Core lives in [`speedpackcore/`](speedpackcore/) and AsyncCart in [`as
 - **Cache stron (1.7):** strony katalogu gotowe dla niezalogowanych gości bez koszyka, w kilka milisekund; czyszczone, gdy zmieni się produkt, jego stan lub cena.
 - **Optimize (1.7):** zdjęcia WebP i AVIF, leniwe ładowanie zdjęć, critical CSS, skrypty odroczone w swojej kolejności, zminifikowany HTML, nagłówki cache i kompresja w `.htaccess`.
 
-**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.9.4.zip`, potem Konfiguruj.
+**Instalacja:** Moduły > Menedżer modułów > Załaduj moduł, wybierz `speedpackcore-1.10.0.zip`, potem Konfiguruj.
 </details>
 
 ---

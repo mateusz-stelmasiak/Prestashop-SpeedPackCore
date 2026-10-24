@@ -44,6 +44,7 @@ export SPC_BH_ADMIN_VARS="$WORK/bh-vars.json" SPC_BH_REPORT="$WORK/bh-report.jso
 step "php: module (install, settings)" php php/unit.php
 step "php: AsyncCart" php php/asynccart.php
 step "php: Optimize page steps" php php/html.php
+step "php: picture compression" php php/compress.php
 if php -r 'exit(class_exists("Redis") ? 0 : 1);' && (exec 3<>/dev/tcp/127.0.0.1/"${REDIS_PORT:-6390}") 2>/dev/null; then
   step "php: data cache (Redis)" php php/cache.php
 else skipped "php: data cache (Redis)" "no Redis on ${REDIS_PORT:-6390} or no phpredis"; fi

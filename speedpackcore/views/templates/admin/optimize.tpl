@@ -18,6 +18,24 @@
   </p>
   <div class="spc-opt-bar" data-spc-convert-bar hidden><span></span></div>
 
+  <h3><i class="icon-compress"></i> {l s='Compress pictures' mod='speedpackcore'}</h3>
+  <p class="help-block">{l s='Makes the JPEG and PNG pictures themselves smaller (product sizes, categories, brands), for every browser and every place they go. The engine is chosen in the settings below. A picture is replaced only when it gets smaller by 3 per cent or more, and its original is kept first in var/speedpack-originals.' mod='speedpackcore'}</p>
+  <p>
+    {if $spc_opt.compress.engine == 'tinypng'}
+      {l s='Engine: TinyPNG' mod='speedpackcore'}{if !$spc_opt.compress.can.tinypng} · <span class="spc-opt-no">{l s='enter the API key below first' mod='speedpackcore'}</span>{/if}
+      {if $spc_opt.compress.count !== null} · {l s='this month: %d of 500 free' sprintf=[$spc_opt.compress.count] mod='speedpackcore'}{/if}
+    {else}
+      {l s='Engine: this server' mod='speedpackcore'}{if !$spc_opt.compress.can.local} · <span class="spc-opt-no">{l s='PHP GD is missing' mod='speedpackcore'}</span>{/if}
+    {/if}
+    {if $spc_opt.compress.stats.files} · <span class="spc-opt-ok">{l s='%1$d pictures compressed so far, %2$d kB smaller' sprintf=[$spc_opt.compress.stats.files, $spc_opt.compress.kb] mod='speedpackcore'}</span>{/if}
+  </p>
+  <p>
+    <button type="button" class="btn btn-default" data-spc-compress{if !$spc_opt.compress.can[$spc_opt.compress.engine]} disabled{/if}><i class="icon-compress"></i> {l s='Compress pictures' mod='speedpackcore'}</button>
+    {if $spc_opt.compress.backups}<button type="button" class="btn btn-link" data-spc-restore>{l s='Restore originals' mod='speedpackcore'}</button>{/if}
+    <span class="spc-opt-progress" data-spc-compress-state></span>
+  </p>
+  <div class="spc-opt-bar" data-spc-compress-bar hidden><span></span></div>
+
   <h3><i class="icon-code"></i> {l s='Critical CSS' mod='speedpackcore'}</h3>
   <p class="help-block">{l s='Reads four real pages of the shop in this browser (home page, a category, a product, a CMS page), at computer and phone width, and keeps the CSS their top part needs. That CSS goes inline in the page and the theme stylesheets load without holding up the first paint. Make it again after changing the theme.' mod='speedpackcore'}</p>
   <table class="table spc-opt-crit">

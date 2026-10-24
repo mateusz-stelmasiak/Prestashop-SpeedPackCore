@@ -17,6 +17,7 @@ $sm->registerPlugin('function', 'l', function ($p) { return htmlspecialchars($p[
 $names = ['index' => 'Home page', 'category' => 'Category', 'product' => 'Product', 'cms' => 'CMS page'];
 $sm->assign('spc_opt', [
     'url' => '/__opt', 'webp' => true, 'avif' => false, 'server' => 'apache', 'headers' => false, 'nginx' => "gzip on;\n",
+    'compress' => ['engine' => 'local', 'can' => ['local' => true, 'tinypng' => false], 'stats' => ['files' => 0, 'before' => 0, 'after' => 0], 'kb' => 0, 'count' => null, 'backups' => false],
     'critical' => array_map(function ($p) use ($names) { return ['page' => $p, 'name' => $names[$p], 'kb' => 0, 'at' => '']; }, array_keys($names)),
     'texts' => json_encode([
         'converting' => 'Converting: %1$d of %2$d images', 'converted' => 'Done: %1$d copies made, %2$s smaller.', 'none' => 'Nothing to convert',

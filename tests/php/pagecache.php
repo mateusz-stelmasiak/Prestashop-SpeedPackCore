@@ -33,6 +33,7 @@ class SpcAudit { static $parts = null; static function parts() { return self::$p
 class SpcCartAnswer { static function count($cart) { return $cart->n; } }
 require SPC_MODULE . '/classes/SpcFeature.php';
 require SPC_MODULE . '/classes/SpcImages.php';
+require SPC_MODULE . '/classes/SpcCompress.php';
 require SPC_MODULE . '/classes/SpcHtml.php';
 require SPC_MODULE . '/classes/SpcOptimize.php';
 require SPC_MODULE . '/classes/SpcPageCache.php';

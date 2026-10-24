@@ -1,5 +1,15 @@
 # Changelog
 
+## SpeedPack Core 1.10.0
+
+- **Compress pictures** (Optimize): the JPEG and PNG pictures themselves made smaller – product sizes, categories, brands, suppliers and stores – for every browser and every place they go (feeds, e-mails, marketplaces), not only the WebP copies.
+  - **On this server** (free, PHP GD): JPEG saved again at the quality you set (82 by default), progressive and without camera data; PNG saved again at the highest lossless compression.
+  - **TinyPNG**: with your own API key (500 pictures a month free at tinypng.com), the picture is sent to the Tinify API and its answer kept; the month's count is shown. A wrong key or a used-up month stops the run with TinyPNG's own message.
+  - A picture is replaced only when it gets 3 per cent smaller or more. Its original is kept first in `var/speedpack-originals/`, and **Restore originals** puts every picture back, in steps.
+  - The picture keeps its date, so WebP and AVIF copies made from the original stay in use; a picture PrestaShop makes again counts as not compressed and can be compressed again.
+  - **Compress new pictures** (off until switched on): a product picture added or regenerated is compressed at once, after its WebP and AVIF copies are made from the original.
+- Tests: a new suite runs compression on real pictures (GD) and TinyPNG through a stand-in.
+
 ## SpeedPack Core 1.9.4
 
 - **Fix: customers could not stay signed in on PHP-FPM hosts** (and a new cart or other cookie change could be forgotten). When the page cache warmer had pages queued, or a Cloudflare purge was pending, the visitor's answer was sent early (`fastcgi_finish_request`) in a shutdown function. PrestaShop writes its cookie later, when the request's objects are destroyed, and skips it once the answer is out: the sign-in kept a cookie without the new customer session (PrestaShop 1.7.8 checks it on every page), so the next page signed the customer out again. The cookie is now written before the answer goes. Servers without PHP-FPM (Apache mod_php) were never affected.
