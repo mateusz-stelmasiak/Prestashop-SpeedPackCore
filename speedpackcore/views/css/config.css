@@ -18,6 +18,7 @@
 .spc-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 16px -20px 0; padding: 0 14px; list-style: none; border-top: 1px solid #eef2f4; }
 .spc-tabs a { display: block; padding: 11px 12px 9px; border-bottom: 3px solid transparent; color: #4d5f68; font-weight: 600; text-decoration: none; }
 .spc-tabs a:hover { color: #1d2a5b; text-decoration: none; }
+.spc-tab-badge { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 9px; background: linear-gradient(90deg, #7c3aed, #25b9d7); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; vertical-align: 1px; }
 .spc-tabs .is-active a { border-bottom-color: #25b9d7; color: #1d2a5b; }
 .spc-pane[hidden] { display: none; }
 

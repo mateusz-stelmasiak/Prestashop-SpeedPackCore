@@ -44,6 +44,7 @@ require_once dirname(__FILE__) . '/classes/SpcWarm.php';
 require_once dirname(__FILE__) . '/classes/SpcCloudflare.php';
 require_once dirname(__FILE__) . '/classes/SpcCloudflareTab.php';
 require_once dirname(__FILE__) . '/classes/SpcOptimize.php';
+require_once dirname(__FILE__) . '/classes/SpcAgents.php';
 
 class SpeedPackCore extends Module
 {
@@ -97,6 +98,9 @@ class SpeedPackCore extends Module
     /** @var SpcReorder */
     private $reorder;
 
+    /** @var SpcAgents */
+    private $agents;
+
     /** @var bool the settings page of a version opened for the first time */
     private $autoAudit = false;
 
@@ -104,7 +108,7 @@ class SpeedPackCore extends Module
     {
         $this->name = 'speedpackcore';
         $this->tab = 'front_office_features';
-        $this->version = '1.12.0';
+        $this->version = '1.13.0';
         $this->author = 'Alhambra';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -127,6 +131,7 @@ class SpeedPackCore extends Module
         $this->diagnostics = new SpcDiagnostics($this, $this->context, $this->l('Health check'));
         $this->behaviour = new SpcBehaviour($this, $this->context, $this->l('Behaviour'));
         $this->reorder = new SpcReorder($this, $this->context, $this->l('Reorder'));
+        $this->agents = new SpcAgents($this, $this->context, $this->l('AI agents'));
     }
 
     /** @return SpcFeature[] by id */
@@ -142,6 +147,7 @@ class SpeedPackCore extends Module
             'instantcart' => $this->instantCart,
             'reorder' => $this->reorder,
             'behaviour' => $this->behaviour,
+            'agents' => $this->agents,
         ];
     }
 
@@ -191,6 +197,8 @@ class SpeedPackCore extends Module
             && $this->registerHook('actionValidateOrder')
             && $this->registerHook('displayFooter')
             && $this->registerHook('displayLlmsTxt')
+            && $this->registerHook('moduleRoutes')
+            && $this->registerHook('actionAdminMetaAfterWriteRobotsFile')
             && $this->reorder->registerHooks()
             && $this->behaviour->registerHooks()
             && $this->pageCache->registerHooks()
@@ -220,7 +228,10 @@ class SpeedPackCore extends Module
         if (!isset($params['controller_type']) || (int) $params['controller_type'] === Dispatcher::FC_FRONT) {
             // pages a change cleared, warmed again once this visitor has their page (SpcWarm)
             SpcWarm::afterVisit();
-            SpcPageCache::serve((string) Dispatcher::getInstance()->getController(), $this->context);
+            // an agent asking for Markdown gets it made from the page, never the kept HTML
+            if (!self::markdownWanted()) {
+                SpcPageCache::serve((string) Dispatcher::getInstance()->getController(), $this->context);
+            }
         }
     }
 
@@ -234,10 +245,41 @@ class SpeedPackCore extends Module
             return;
         }
         $html = &$params['html'];
+        if (self::markdownWanted() && !($this->context->controller instanceof ModuleFrontController)) {
+            // the page as Markdown for an agent (AI agents tab); not optimized, not kept
+            $html = SpcAgentMarkdown::fromHtml($html, $this->context->link->getPageLink('index', true));
+            if (!headers_sent()) {
+                header('Content-Type: text/markdown; charset=utf-8');
+                header('Vary: Accept', false);
+                header('X-Robots-Tag: noindex');
+            }
+
+            return;
+        }
         if (!SpcAudit::off('optimize')) {
             $html = $this->optimize->transform($html, $this->pageName());
         }
         SpcPageCache::store((string) Dispatcher::getInstance()->getController(), $html, $this->context);
+    }
+
+    /** an agent asks for Markdown and the AI agents tab serves it */
+    private static function markdownWanted()
+    {
+        return SpcAgentMarkdown::wanted() && SpcAgentSettings::on(SpcAgentSettings::K_MARKDOWN);
+    }
+
+    /** /buy, /mcp, /a2a, /acp/carts and the bot key directory, once the AI agents tab is set up */
+    public function hookModuleRoutes()
+    {
+        return SpcAgentSettings::active() ? SpcAgents::routes() : [];
+    }
+
+    /** PrestaShop wrote robots.txt again (SEO & URLs): the Content-Signal line goes back in */
+    public function hookActionAdminMetaAfterWriteRobotsFile($params)
+    {
+        if (SpcAgentSettings::active()) {
+            register_shutdown_function(['SpcAgentSettings', 'writeRobots']);
+        }
     }
 
     /** The page's name as Optimize knows it: index, product... or module-<name> for a module's page. */
@@ -472,6 +514,9 @@ class SpeedPackCore extends Module
         if (Tools::getValue('spc_ajax') === 'optimize') {
             $this->optimize->ajax((string) Tools::getValue('op'));
         }
+        if (Tools::getValue('spc_ajax') === 'agents') {
+            $this->agents->ajax((string) Tools::getValue('op'));
+        }
         if (Tools::getValue('spc_ajax') === 'audit') {
             $this->ajaxAudit((string) Tools::getValue('step'));
         }
@@ -482,7 +527,7 @@ class SpeedPackCore extends Module
             Configuration::updateValue(self::K_SEEN, $this->version);
         }
         $this->assetsUpdated();
-        foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews', 'actionValidateOrder', 'displayFooter', 'displayLlmsTxt'] as $hook) {
+        foreach (['actionDispatcherBefore', 'actionFrontControllerSetMedia', 'displayHeader', 'displayProductListReviews', 'actionValidateOrder', 'displayFooter', 'displayLlmsTxt', 'moduleRoutes', 'actionAdminMetaAfterWriteRobotsFile'] as $hook) {
             if (!$this->isRegisteredInHook($hook)) {
                 $this->registerHook($hook);
             }
@@ -511,7 +556,7 @@ class SpeedPackCore extends Module
         // every section of the page, in tab order; each starts with a marker (pane.tpl) that
         // views/js/config.js turns into a tab
         // the speed-ups first, then the health check, then Behaviour (not a speed-up: a report)
-        $panes = ['audit' => $this->renderAudit()];
+        $panes = ['agents' => $this->agents->getContent(), 'audit' => $this->renderAudit()];
         foreach ($this->speedUps() as $id => $part) {
             $panes[$id] = $part->getContent();
         }
@@ -519,7 +564,7 @@ class SpeedPackCore extends Module
         $panes['diagnostics'] = $this->diagnostics->getContent();
         $panes['behaviour'] = $this->behaviour->getContent();
 
-        $tabs = [['id' => 'overview', 'title' => $this->l('Overview')], ['id' => 'audit', 'title' => $this->l('Speed audit')]];
+        $tabs = [['id' => 'overview', 'title' => $this->l('Overview')], ['id' => 'agents', 'title' => $this->l('AI agents'), 'badge' => SpcAgentSettings::active() ? '' : $this->l('New')], ['id' => 'audit', 'title' => $this->l('Speed audit')]];
         foreach ($this->speedUps() as $id => $part) {
             $tabs[] = ['id' => $id, 'title' => $part->displayName];
         }
@@ -546,7 +591,7 @@ class SpeedPackCore extends Module
     private function speedUps()
     {
         $parts = $this->parts();
-        unset($parts['behaviour']);
+        unset($parts['behaviour'], $parts['agents']);
 
         return $parts;
     }
@@ -594,6 +639,7 @@ class SpeedPackCore extends Module
             'behaviour' => ['submitSpcBehaviour'],
             'reorder' => ['submitSpcReorder'],
             'overview' => ['submitSpcShare'],
+            'agents' => SpcAgents::SUBMITS,
         ];
         foreach ($forms as $tab => $submits) {
             foreach ($submits as $submit) {
@@ -628,7 +674,7 @@ class SpeedPackCore extends Module
     /** @return array id => summary of every part */
     private function summaries()
     {
-        $out = [];
+        $out = ['agents' => $this->agents->summary()];
         foreach ($this->speedUps() as $id => $part) {
             $out[$id] = $part->summary();
         }
@@ -644,8 +690,9 @@ class SpeedPackCore extends Module
     {
         $this->context->controller->addCSS($this->getPathUri() . 'views/css/config.css');
         $this->context->controller->addJS($this->getPathUri() . 'views/js/config.js');
-        $names = ['cache' => 'Cache', 'pagecache' => $this->pageCache->displayName, 'cloudflare' => 'Cloudflare', 'optimize' => $this->optimize->displayName, 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName];
+        $names = ['cache' => 'Cache', 'pagecache' => $this->pageCache->displayName, 'cloudflare' => 'Cloudflare', 'optimize' => $this->optimize->displayName, 'smartprefetch' => 'SmartPrefetch', 'instantnav' => 'InstantNav', 'instantcart' => 'InstantCart', 'cartspeed' => 'CartSpeed', 'diagnostics' => $this->diagnostics->displayName, 'behaviour' => $this->behaviour->displayName, 'reorder' => $this->reorder->displayName, 'agents' => $this->agents->displayName];
         $what = [
+            'agents' => $this->l('The shop readable, searchable and shoppable for AI agents, in one click.'),
             'cache' => $this->l('Database results kept in Redis, APCu or Memcached.'),
             'pagecache' => $this->l('Whole pages ready for visitors.'),
             'cloudflare' => $this->l('The zone checked and tuned for PrestaShop, visitors\' own addresses.'),

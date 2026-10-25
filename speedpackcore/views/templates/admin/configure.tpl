@@ -24,7 +24,7 @@
   </div>
   <ul class="spc-tabs" role="tablist">
     {foreach from=$spc.tabs item=tab}
-      <li><a href="#spc-{$tab.id|escape:'html':'UTF-8'}" role="tab" data-spc-tab="{$tab.id|escape:'html':'UTF-8'}">{$tab.title|escape:'html':'UTF-8'}</a></li>
+      <li><a href="#spc-{$tab.id|escape:'html':'UTF-8'}" role="tab" data-spc-tab="{$tab.id|escape:'html':'UTF-8'}">{$tab.title|escape:'html':'UTF-8'}{if !empty($tab.badge)} <span class="spc-tab-badge">{$tab.badge|escape:'html':'UTF-8'}</span>{/if}</a></li>
     {/foreach}
   </ul>
 </div>

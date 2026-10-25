@@ -1,5 +1,17 @@
 # Changelog
 
+## SpeedPack Core 1.13.0
+
+- **A new tab: AI agents – "Get your shop ready for AI agents".** One button sets up everything an agent-readiness scanner (isitagentready) looks for, step by step, each step explained (what happens, why it matters, which standard) and proved from the outside; a score before and after (17 checks, DNS-AID optional).
+  - **Discoverability and content**: Content-Signal in robots.txt (search, ai-input, ai-train, each adjustable), Link headers on every page (RFC 8288 / 9727), an llms.txt of the shop (categories, products with prices, pages; only when no other module makes one), and every page in **Markdown for agents** that ask for it (Accept: text/markdown; browsers still get HTML, the page cache is not used for it).
+  - **Discovery**: a public read-only catalogue API with OpenAPI (/openapi.json) and the API catalog, an **MCP server** (/mcp: search products, make a shopping link, shop info), an **A2A agent** (/a2a) that answers in plain words with products and buy links, an Agent Skill, **WebMCP** tools in the pages (search, add to cart, view cart, go to checkout), auth.md.
+  - **Bot access**: **Web Bot Auth** – an Ed25519 key, the signed key directory, and SpeedPack's own warmer and speed audit sign their requests.
+  - **Commerce**: the **UCP shopping link** (/buy/12:2,15:1 fills the shopper's cart and opens the checkout), **ACP carts** (/acp/carts with a key per agent platform, OAuth Protected Resource Metadata), DNS-AID records through the Cloudflare tab.
+  - Honest by design: OAuth sign-in for agents and payment protocols that need an outside provider (AP2, MPP, x402) are shown as not applicable, with the reason, never declared.
+  - Fine-tune each part, the content signals and the ACP keys; one link switches the whole section off and takes back everything it published.
+- The overview opens with the AI agents card; the tab is marked "New" until it is set up.
+- Tests: the settings page with the new tab.
+
 ## SpeedPack Core 1.12.0
 
 - **DNS for AI agents (DNS-AID)** on the Cloudflare tab: when the shop publishes an MCP server card or an A2A agent card under `/.well-known` (for example with an llms.txt / agent module), the tab lists the SVCB records that announce them in DNS – `_mcp._agents` and `_a2a._agents` (and `_shop._mcp._agents`, `_shop._a2a._agents`) pointing to the shop with the card's address, plus the `_index._agents` TXT – shows which are in place, and writes the missing ones at Cloudflare with one button (the token needs "DNS: Edit"). Nothing is announced for an endpoint the shop does not publish.

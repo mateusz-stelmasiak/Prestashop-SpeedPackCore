@@ -191,6 +191,11 @@ class SpcWarm
             return [];
         }
 
+        // no module signed it: SpeedPack's own key (AI agents tab, Web Bot Auth)
+        if (!$headers && class_exists('SpcBotAuth', false) && SpcBotAuth::ready()) {
+            $headers = SpcBotAuth::requestHeaderLines((string) $url);
+        }
+
         return array_values(array_filter($headers, function ($h) { return is_string($h) && strpos($h, ':') > 0 && strpbrk($h, "\r\n") === false; }));
     }
 
