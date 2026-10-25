@@ -87,6 +87,8 @@
 .spc-ag-state.is-pass { background: var(--ag-green); box-shadow: 0 0 0 3px rgba(34, 197, 94, .18); }
 .spc-ag-state.is-fail { background: var(--ag-red); box-shadow: 0 0 0 3px rgba(239, 68, 68, .15); }
 .spc-ag-state.is-optional { background: var(--ag-amber); }
+.spc-ag-state.is-local { background: #fff; border: 3px solid var(--ag-green); width: 12px; height: 12px; box-sizing: border-box; }
+.spc-ag-blocked { margin: 16px 0 0; border-radius: 12px; font-size: 13px; line-height: 1.5; }
 .spc-ag-state.is-na { background: #94a3b8; }
 .spc-ag-name { color: #0f172a; font-weight: 700; font-size: 13px; }
 .spc-ag-detail { grid-column: 2; color: #64748b; font-size: 12px; word-break: break-word; }

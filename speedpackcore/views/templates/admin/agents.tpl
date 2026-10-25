@@ -18,9 +18,9 @@
      data-t-pass="{l s='works' mod='speedpackcore'}"
      data-t-fail="{l s='missing' mod='speedpackcore'}"
      data-t-optional="{l s='optional' mod='speedpackcore'}"
+     data-t-local="{l s='set up (your server would not let the shop ask itself)' mod='speedpackcore'}"
      data-t-done="{l s='Your shop is ready for AI agents' mod='speedpackcore'}"
      data-t-partly="{l s='Almost there: see what still needs attention below' mod='speedpackcore'}"
-     data-t-unreachable="{l s='The shop could not be reached from this server (some hosts block a site from calling itself). The parts are set up; check them with the scanner link below.' mod='speedpackcore'}"
      data-t-confirm-off="{l s='Take back everything the AI agents section published?' mod='speedpackcore'}">
 
   <div class="spc-ag-hero">
@@ -47,6 +47,8 @@
       <div class="spc-ag-gauge-before" data-spc-ag="before"></div>
     </div>
   </div>
+
+  <div class="alert alert-warning spc-ag-blocked" data-spc-ag="blocked" hidden></div>
 
   <div class="spc-ag-run" data-spc-ag="steps" hidden>
     {foreach from=$spc_ag.steps item=s}

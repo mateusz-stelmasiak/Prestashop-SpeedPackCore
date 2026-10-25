@@ -1,5 +1,10 @@
 # Changelog
 
+## SpeedPack Core 1.13.1
+
+- AI agents: the self-check works on hosts whose firewall refuses requests a site makes to itself (often mod_security). A refused request is tried again as a browser; when the server still refuses, every part that is in place (files, settings, routes) is shown as "set up" and counted, with a note explaining the refusal and pointing to the outside check (isitagentready.com).
+- AI agents: the details of each check show the HTTP status the server answered with.
+
 ## SpeedPack Core 1.13.0
 
 - **A new tab: AI agents – "Get your shop ready for AI agents".** One button sets up everything an agent-readiness scanner (isitagentready) looks for, step by step, each step explained (what happens, why it matters, which standard) and proved from the outside; a score before and after (17 checks, DNS-AID optional).

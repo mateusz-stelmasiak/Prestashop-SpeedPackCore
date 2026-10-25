@@ -144,7 +144,7 @@ class SpcAgents extends SpcFeature
         $score = SpcAgentCheck::score($res);
         Configuration::updateValue(self::K_LAST, json_encode(['at' => time(), 'results' => $res, 'score' => $score]));
 
-        return ['results' => $res, 'score' => $score];
+        return ['results' => $res, 'score' => $score, 'blocked' => $this->blocked()];
     }
 
     /** One step: its parts switched on, written, and proved from the outside. */
@@ -199,7 +199,22 @@ class SpcAgents extends SpcFeature
         SpcAgentSettings::publish($this->context);
         $res = SpcAgentCheck::run($this->context, $checks);
 
-        return ['step' => $step, 'results' => $res, 'note' => $note];
+        return ['step' => $step, 'results' => $res, 'note' => $note, 'blocked' => $this->blocked()];
+    }
+
+    /**
+     * The server refused most of the requests it made to itself (a hosting firewall turning away
+     * requests from its own address): what to tell the merchant, or ''.
+     */
+    protected function blocked()
+    {
+        $seen = SpcAgentCheck::$seen;
+        if ($seen['total'] === 0 || $seen['refused'] * 2 < $seen['total']) {
+            return '';
+        }
+
+        return sprintf($this->t('Your server refuses the requests the shop makes to itself (HTTP 403%s), so the shop cannot test itself from inside. That is the hosting\'s firewall (often mod_security), not a missing part: everything marked "set up" is in place. Check it from outside with the isitagentready link, and ask your hosting to allow requests from the server\'s own address if you want this check to work.'),
+            $seen['title'] !== '' ? ': "' . $seen['title'] . '"' : '');
     }
 
     /** everything this section published, taken back */

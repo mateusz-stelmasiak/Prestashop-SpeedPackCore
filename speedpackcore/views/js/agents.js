@@ -37,7 +37,7 @@
         var st = results[id][0];
         li.querySelector('.spc-ag-state').className = 'spc-ag-state is-' + st;
         li.querySelector('.spc-ag-detail').textContent = results[id][1];
-        li.title = st === 'pass' ? d.tPass : (st === 'optional' ? d.tOptional : d.tFail);
+        li.title = st === 'pass' ? d.tPass : (st === 'local' ? d.tLocal : (st === 'optional' ? d.tOptional : d.tFail));
       });
     }
 
@@ -45,7 +45,7 @@
       var ok = 0, n = 0;
       Object.keys(results).forEach(function (id) {
         if (optional.indexOf(id) >= 0) { return; }
-        n++; if (results[id][0] === 'pass') { ok++; }
+        n++; if (results[id][0] === 'pass' || results[id][0] === 'local') { ok++; }
       });
       return [ok, n];
     }
@@ -57,12 +57,16 @@
         root.classList.remove('is-checking');
         paint(r.results);
         gauge(r.score[0], r.score[1]);
-        if (r.score[0] === 0 && r.results.robots && r.results.robots[1].indexOf('HTTP 0') >= 0) {
-          $('label').textContent = '?';
-          $('before').textContent = d.tUnreachable;
-        }
+        blocked(r.blocked);
         return r;
       });
+    }
+
+    function blocked(msg) {
+      var box = $('blocked');
+      if (!box) { return; }
+      box.textContent = msg || '';
+      box.hidden = !msg;
     }
 
     function sleep(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
@@ -83,10 +87,11 @@
           var res = r.results[c];
           if (!res) { return; }
           results[c] = res;
-          if (res[0] !== 'pass') { ok = false; }
-          lines.push((res[0] === 'pass' ? '✓ ' : (res[0] === 'optional' ? '○ ' : '✗ ')) + names[c] + ': ' + res[1]);
+          if (res[0] !== 'pass' && res[0] !== 'local') { ok = false; }
+          lines.push((res[0] === 'pass' ? '✓ ' : (res[0] === 'local' ? '✓ ' : (res[0] === 'optional' ? '○ ' : '✗ '))) + names[c] + ': ' + res[1]);
         });
         if (r.note) { lines.push('ℹ ' + r.note); }
+        blocked(r.blocked);
         el.querySelector('[data-spc-ag="proof"]').textContent = lines.join('\n');
         el.classList.remove('is-working');
         el.classList.add(ok ? 'is-done' : (name === 'dnsaid' ? 'is-optional' : 'is-failed'));
@@ -131,6 +136,7 @@
         return runStep(0, results);
       }).then(function () { return post('finish'); }).then(function (r) {
         paint(r.results);
+        blocked(r.blocked);
         gauge(r.score[0], r.score[1]);
         $('finale-title').textContent = r.score[0] === r.score[1] ? d.tDone : d.tPartly;
         $('finale-before').textContent = r.before[0] + '/' + r.before[1];
