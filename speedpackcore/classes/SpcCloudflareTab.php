@@ -18,7 +18,7 @@ class SpcCloudflareTab extends SpcFeature
     public $id = 'cloudflare';
 
     /** the forms of this tab (the settings page opens the tab of the form just sent) */
-    public const SUBMITS = ['submitSpcCloudflare', 'submitSpcCloudflareTest', 'submitSpcCfRefresh', 'submitSpcCfApply', 'submitSpcCfDev', 'submitSpcCfAttack', 'submitSpcCfBots', 'submitSpcCfPurge', 'submitSpcCfRealIp'];
+    public const SUBMITS = ['submitSpcCloudflare', 'submitSpcCloudflareTest', 'submitSpcCfRefresh', 'submitSpcCfApply', 'submitSpcCfDev', 'submitSpcCfAttack', 'submitSpcCfBots', 'submitSpcCfPurge', 'submitSpcCfRealIp', 'submitSpcCfAgents'];
 
     public function install()
     {
@@ -123,12 +123,26 @@ class SpcCloudflareTab extends SpcFeature
                 $findings[] = ['level' => $f[0], 'text' => sprintf($texts[$f[1]], $f[2], $f[3])];
             }
         }
+        $agents = [];
+        if ($state && is_array($state['dns'])) {
+            foreach (SpcCloudflare::agentRecords($this->host(), _PS_ROOT_DIR_) as $w) {
+                $present = false;
+                foreach ($state['dns'] as $r) {
+                    if (strcasecmp($r['type'], $w['type']) === 0 && strcasecmp($r['name'], $w['name']) === 0 && SpcCloudflare::sameRecord($r['content'], $w['content'])) {
+                        $present = true;
+                    }
+                }
+                $agents[] = ['type' => $w['type'], 'name' => $w['name'], 'content' => $w['content'], 'present' => $present];
+            }
+        }
         $last = json_decode((string) Configuration::get(SpcCloudflare::K_LAST), true);
         $out .= $this->render('admin/cloudflare.tpl', ['spc_cf' => [
             'configured' => SpcCloudflare::configured(),
             'state' => $state,
             'rows' => $rows,
             'findings' => $findings,
+            'agents' => $agents,
+            'agents_missing' => count(array_filter($agents, function ($a) { return !$a['present']; })),
             'cert' => $cert,
             'host' => $this->host(),
             'ns' => $state && $state['zone'] ? implode(', ', $state['zone']['name_servers']) : '',
@@ -224,6 +238,11 @@ class SpcCloudflareTab extends SpcFeature
             $out .= $r['ok'] ? $this->displayConfirmation($on ? $this->l('Bot Fight Mode on.') : $this->l('Bot Fight Mode off.'))
                 : $this->displayError(sprintf($this->l('Cloudflare did not change it: %s (the token needs the "Bot Management: Edit" permission).'), $r['error']));
         }
+        if (Tools::isSubmit('submitSpcCfAgents')) {
+            $r = SpcCloudflare::publishAgents($this->host(), _PS_ROOT_DIR_);
+            $out .= $r['ok'] ? $this->displayConfirmation(sprintf($this->l('DNS-AID: %d records written at Cloudflare.'), $r['done']))
+                : $this->displayError(sprintf($this->l('Cloudflare did not write them: %s (the token needs the "DNS: Edit" permission).'), $r['error']));
+        }
         if (Tools::isSubmit('submitSpcCfPurge')) {
             $r = SpcCloudflare::purgeNow();
             $out .= $r['ok'] ? $this->displayConfirmation($this->l('Cloudflare\'s cache was purged.')) : $this->displayError($r['error']);
@@ -257,7 +276,7 @@ class SpcCloudflareTab extends SpcFeature
         return $helper->generateForm([['form' => [
             'id_form' => 'spc-cloudflare',
             'legend' => ['title' => $this->l('Connection'), 'icon' => 'icon-cloud'],
-            'description' => $this->l('Cloudflare, the domain, Overview: the zone ID is on the right. The token: My Profile, API Tokens, Create token, with these permissions for the zone: Zone Read, Zone Settings Edit, DNS Read, Cache Purge, and Bot Management Edit for Bot Fight Mode.'),
+            'description' => $this->l('Cloudflare, the domain, Overview: the zone ID is on the right. The token: My Profile, API Tokens, Create token, with these permissions for the zone: Zone Read, Zone Settings Edit, DNS Read, Cache Purge, Bot Management Edit for Bot Fight Mode, and DNS Edit for the DNS-AID records.'),
             'input' => [
                 ['type' => 'text', 'name' => SpcCloudflare::K_ZONE, 'label' => $this->l('Zone ID'), 'class' => 'fixed-width-xxl'],
                 ['type' => 'text', 'name' => SpcCloudflare::K_TOKEN, 'label' => $this->l('API token'), 'class' => 'fixed-width-xxl', 'desc' => $this->l('Kept on the server; shown as dots once saved.')],

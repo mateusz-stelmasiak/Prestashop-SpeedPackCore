@@ -1,5 +1,11 @@
 # Changelog
 
+## SpeedPack Core 1.12.0
+
+- **DNS for AI agents (DNS-AID)** on the Cloudflare tab: when the shop publishes an MCP server card or an A2A agent card under `/.well-known` (for example with an llms.txt / agent module), the tab lists the SVCB records that announce them in DNS – `_mcp._agents` and `_a2a._agents` (and `_shop._mcp._agents`, `_shop._a2a._agents`) pointing to the shop with the card's address, plus the `_index._agents` TXT – shows which are in place, and writes the missing ones at Cloudflare with one button (the token needs "DNS: Edit"). Nothing is announced for an endpoint the shop does not publish.
+- **The shop's own bots can be signed (Web Bot Auth)**: the cache warmer, the page cache warm-up and the speed audit call a new hook, `actionSpeedPackBotRequest`, before every request, so a module holding the shop's key can add `Signature-Agent`, `Signature-Input` and `Signature` headers and a CDN or firewall in front of the shop knows the requests are the shop's own.
+- Tests: DNS-AID records against the Cloudflare stand-in (a read-only token, writing, writing again changes nothing).
+
 ## SpeedPack Core 1.11.0
 
 - **A Cloudflare tab** (the zone ID and token moved there from Page cache):

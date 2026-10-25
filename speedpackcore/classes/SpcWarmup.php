@@ -93,7 +93,7 @@ class SpcWarmup
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_ENCODING => '',
             CURLOPT_USERAGENT => 'SpeedPackCore/1.1 (+cache warm-up)',
-            CURLOPT_HTTPHEADER => ['Accept: text/html'],
+            CURLOPT_HTTPHEADER => array_merge(['Accept: text/html'], class_exists('SpcWarm', false) ? SpcWarm::botHeaders($url) : []),
         ]);
         $body = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

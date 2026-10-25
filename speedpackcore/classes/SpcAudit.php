@@ -494,7 +494,7 @@ class SpcAudit
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_ENCODING => '',
             CURLOPT_USERAGENT => 'SpeedPackCore/1.4 (+speed audit)',
-            CURLOPT_HTTPHEADER => array_merge(['Accept: ' . ($accept ?: 'text/html,application/json;q=0.9')], $cookies ? ['Cookie: ' . implode('; ', $cookies)] : []),
+            CURLOPT_HTTPHEADER => array_merge(['Accept: ' . ($accept ?: 'text/html,application/json;q=0.9')], $cookies ? ['Cookie: ' . implode('; ', $cookies)] : [], class_exists('SpcWarm', false) ? SpcWarm::botHeaders($url) : []),
             CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers, &$audit, &$cache) {
                 if (stripos($line, 'Set-Cookie:') === 0 && preg_match('/^Set-Cookie:\s*([^=;\s]+)=([^;]*)/i', $line, $m)) {
                     $headers[$m[1]] = $m[2];

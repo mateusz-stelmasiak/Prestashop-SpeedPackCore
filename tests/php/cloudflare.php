@@ -50,3 +50,29 @@ $r = SpcCloudflare::setSetting('ssl', 'full');
 ok($r['ok'] && Configuration::get(SpcCloudflare::K_STATE) === '' && SpcCloudflare::state()['settings']['ssl']['value'] === 'full', 'a setting changed at Cloudflare, then asked again');
 ok(SpcCloudflare::botFight(true)['ok'] && SpcCloudflare::state()['bots']['fight_mode'] === true, 'Bot Fight Mode switched on');
 ok(SpcCloudflare::purgeNow()['ok'] && json_decode(Configuration::get(SpcCloudflare::K_LAST), true)['ok'], 'a purge now, noted as the last one');
+
+// --- DNS-AID: records only for the agent cards the shop publishes
+$root = sys_get_temp_dir() . '/spc-dnsaid-' . getmypid();
+@mkdir($root . '/.well-known/mcp', 0777, true);
+ok(SpcCloudflare::agentRecords('shop.test', $root) === [] && !SpcCloudflare::publishAgents('shop.test', $root)['ok'], 'no agent card: no DNS-AID record, nothing written');
+file_put_contents($root . '/.well-known/mcp/server-card.json', '{}');
+$recs = SpcCloudflare::agentRecords('shop.test', $root);
+ok(count($recs) === 3 && $recs[0]['name'] === '_mcp._agents.shop.test' && $recs[0]['type'] === 'SVCB' && $recs[1]['name'] === '_shop._mcp._agents.shop.test'
+    && $recs[2]['name'] === '_index._agents.shop.test' && $recs[2]['content'] === '"agents=shop:mcp"', 'an MCP server card: _mcp._agents, _shop._mcp._agents and the index');
+ok(strpos($recs[0]['content'], 'key65400="https://shop.test/.well-known/mcp/server-card.json"') !== false && $recs[0]['data']['target'] === 'shop.test.', 'the SVCB points to the shop with the card as "cap"');
+file_put_contents($root . '/.well-known/agent-card.json', '{}');
+$recs = SpcCloudflare::agentRecords('shop.test', $root);
+ok(count($recs) === 5 && $recs[4]['content'] === '"agents=shop:mcp,shop:a2a"', 'with an A2A card too: five records');
+$good = Configuration::get(SpcCloudflare::K_TOKEN);
+Configuration::$v[SpcCloudflare::K_TOKEN] = 'readtoken';
+$r = SpcCloudflare::publishAgents('shop.test', $root);
+ok(!$r['ok'] && strpos($r['error'], 'Authentication error') !== false, 'a token without DNS Edit: Cloudflare\'s refusal is shown');
+Configuration::$v[SpcCloudflare::K_TOKEN] = $good;
+$r = SpcCloudflare::publishAgents('shop.test', $root);
+ok($r['ok'] && $r['done'] === 5, 'written at Cloudflare');
+$r = SpcCloudflare::publishAgents('shop.test', $root);
+ok($r['ok'] && $r['done'] === 0, 'written again: nothing changes (Cloudflare\'s quoting of the port is the same record)');
+$names = array_column(SpcCloudflare::state(true)['dns'], 'name');
+ok(in_array('_a2a._agents.shop.test', $names, true) && in_array('_index._agents.shop.test', $names, true), 'the zone now lists them');
+array_map('unlink', [$root . '/.well-known/mcp/server-card.json', $root . '/.well-known/agent-card.json']);
+

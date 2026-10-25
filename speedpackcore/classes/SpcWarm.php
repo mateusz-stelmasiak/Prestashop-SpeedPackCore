@@ -173,6 +173,27 @@ class SpcWarm
         return ['url' => $url, 'states' => $states, 'ms' => $ms];
     }
 
+    /**
+     * Extra headers for a request the shop's own bot makes (cache warmer, speed audit): another
+     * module can sign it (Web Bot Auth: Signature-Agent, Signature-Input, Signature) through the
+     * actionSpeedPackBotRequest hook, so a CDN or firewall in front of the shop knows it.
+     *
+     * @return string[] "Name: value"
+     */
+    public static function botHeaders($url)
+    {
+        $headers = [];
+        try {
+            Hook::exec('actionSpeedPackBotRequest', ['url' => (string) $url, 'headers' => &$headers]);
+        } catch (Exception $e) {
+            return [];
+        } catch (Error $e) {
+            return [];
+        }
+
+        return array_values(array_filter($headers, function ($h) { return is_string($h) && strpos($h, ':') > 0 && strpbrk($h, "\r\n") === false; }));
+    }
+
     protected static function open($url, $ua)
     {
         if (!function_exists('curl_init')) {
@@ -187,7 +208,7 @@ class SpcWarm
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_ENCODING => '',
             CURLOPT_USERAGENT => $ua,
-            CURLOPT_HTTPHEADER => ['Accept: ' . self::ACCEPT],
+            CURLOPT_HTTPHEADER => array_merge(['Accept: ' . self::ACCEPT], self::botHeaders($url)),
             CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$state) {
                 if (stripos($line, 'X-SpeedPack-Cache:') === 0) {
                     $state = trim(substr($line, 18));

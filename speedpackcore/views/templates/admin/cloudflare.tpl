@@ -98,6 +98,28 @@
       {else}
         <p class="spc-opt-ok">{l s='%s goes through Cloudflare and mail is not sent to a proxied name.' sprintf=[$spc_cf.host] mod='speedpackcore'}</p>
       {/if}
+
+      <h3><i class="icon-android"></i> {l s='DNS for AI agents (DNS-AID)' mod='speedpackcore'}</h3>
+      {if $spc_cf.agents}
+        <p>{l s='SVCB records tell AI agents, through DNS alone, where the shop's MCP server and A2A agent are. Only the endpoints the shop publishes are listed.' mod='speedpackcore'}</p>
+        <table class="table spc-cf-table">
+          <thead><tr><th>{l s='Record' mod='speedpackcore'}</th><th>{l s='Content' mod='speedpackcore'}</th><th></th></tr></thead>
+          <tbody>
+            {foreach from=$spc_cf.agents item=a}
+              <tr>
+                <td><b>{$a.name|escape:'html':'UTF-8'}</b> {$a.type|escape:'html':'UTF-8'}</td>
+                <td><small><code>{$a.content|escape:'html':'UTF-8'}</code></small></td>
+                <td>{if $a.present}<span class="spc-opt-ok">{l s='in place' mod='speedpackcore'}</span>{else}<span class="spc-opt-no">{l s='missing' mod='speedpackcore'}</span>{/if}</td>
+              </tr>
+            {/foreach}
+          </tbody>
+        </table>
+        {if $spc_cf.agents_missing}
+          <form method="post"><button type="submit" name="submitSpcCfAgents" value="1" class="btn btn-default"><i class="icon-plus"></i> {l s='Write the DNS-AID records at Cloudflare' mod='speedpackcore'}</button></form>
+        {/if}
+      {else}
+        <p class="help-block">{l s='No agent endpoint is published (an MCP server card or an A2A agent card under /.well-known), so there is nothing to announce in DNS.' mod='speedpackcore'}</p>
+      {/if}
     {/if}
   {/if}
 </div>

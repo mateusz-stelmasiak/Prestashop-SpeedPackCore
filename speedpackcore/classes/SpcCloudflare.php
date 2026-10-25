@@ -385,6 +385,89 @@ class SpcCloudflare
         return $out;
     }
 
+    /** agent protocol => the card a module publishes for it under the shop's root */
+    public const AGENT_CARDS = ['mcp' => '/.well-known/mcp/server-card.json', 'a2a' => '/.well-known/agent-card.json'];
+
+    /**
+     * DNS for AI Discovery (DNS-AID, RFC 9460 SVCB): for each agent endpoint the shop really
+     * publishes (an MCP server card, an A2A agent card), an SVCB record at _{protocol}._agents
+     * and at _shop._{protocol}._agents pointing to the shop, with the card's address as "cap"
+     * (key65400), and the index TXT at _index._agents listing them. Nothing when no card exists.
+     *
+     * @return array[] type, name, content (as Cloudflare shows it), data (for the API)
+     */
+    public static function agentRecords($host, $root)
+    {
+        $host = strtolower(rtrim((string) $host, '.'));
+        $out = [];
+        $index = [];
+        foreach (self::AGENT_CARDS as $protocol => $path) {
+            if (!is_file(rtrim($root, '/') . $path)) {
+                continue;
+            }
+            $value = 'alpn="' . $protocol . '" port="443" key65400="https://' . $host . $path . '"';
+            foreach (['_' . $protocol . '._agents.', '_shop._' . $protocol . '._agents.'] as $prefix) {
+                $out[] = ['type' => 'SVCB', 'name' => $prefix . $host, 'content' => '1 ' . $host . '. ' . $value,
+                    'data' => ['priority' => 1, 'target' => $host . '.', 'value' => $value], ];
+            }
+            $index[] = 'shop:' . $protocol;
+        }
+        if ($index) {
+            $txt = '"agents=' . implode(',', $index) . '"';
+            $out[] = ['type' => 'TXT', 'name' => '_index._agents.' . $host, 'content' => $txt, 'data' => null];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Creates the DNS-AID records, or brings existing ones up to date (the token needs DNS Edit).
+     *
+     * @return array ok, done, error
+     */
+    public static function publishAgents($host, $root)
+    {
+        $want = self::agentRecords($host, $root);
+        if (!$want) {
+            return ['ok' => false, 'done' => 0, 'error' => 'no agent card is published (MCP server card or A2A agent card under /.well-known)'];
+        }
+        $list = self::call('GET', '/dns_records?per_page=500', null);
+        if (empty($list['success'])) {
+            return ['ok' => false, 'done' => 0, 'error' => self::firstError([$list])];
+        }
+        $have = [];
+        foreach ((array) $list['result'] as $r) {
+            $have[strtolower($r['type'] . ' ' . $r['name'])] = $r;
+        }
+        $done = 0;
+        $errors = [];
+        foreach ($want as $w) {
+            $body = ['type' => $w['type'], 'name' => $w['name'], 'ttl' => 3600, 'comment' => 'DNS-AID, SpeedPack Core'];
+            $body += $w['data'] !== null ? ['data' => $w['data']] : ['content' => $w['content']];
+            $old = isset($have[strtolower($w['type'] . ' ' . $w['name'])]) ? $have[strtolower($w['type'] . ' ' . $w['name'])] : null;
+            if ($old && self::sameRecord((string) $old['content'], $w['content'])) {
+                continue;
+            }
+            $a = $old ? self::call('PUT', '/dns_records/' . rawurlencode((string) $old['id']), $body) : self::call('POST', '/dns_records', $body);
+            if (!empty($a['success'])) {
+                ++$done;
+            } else {
+                $errors[] = $w['name'] . ': ' . self::firstError([$a]);
+            }
+        }
+        self::forget();
+
+        return ['ok' => !$errors, 'done' => $done, 'error' => implode('; ', $errors)];
+    }
+
+    /** the same record content, whatever quoting Cloudflare puts on numbers */
+    public static function sameRecord($a, $b)
+    {
+        $n = function ($s) { return preg_replace('/\s+/', ' ', str_replace('"', '', trim($s))); };
+
+        return $n($a) === $n($b);
+    }
+
     protected static function firstError(array $answers)
     {
         foreach ($answers as $a) {
