@@ -101,7 +101,7 @@
 
       <h3><i class="icon-android"></i> {l s='DNS for AI agents (DNS-AID)' mod='speedpackcore'}</h3>
       {if $spc_cf.agents}
-        <p>{l s='SVCB records tell AI agents, through DNS alone, where the shop's MCP server and A2A agent are. Only the endpoints the shop publishes are listed.' mod='speedpackcore'}</p>
+        <p>{l s='SVCB records tell AI agents, through DNS alone, where the MCP server and the A2A agent of the shop are. Only the endpoints the shop publishes are listed.' mod='speedpackcore'}</p>
         <table class="table spc-cf-table">
           <thead><tr><th>{l s='Record' mod='speedpackcore'}</th><th>{l s='Content' mod='speedpackcore'}</th><th></th></tr></thead>
           <tbody>
