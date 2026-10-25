@@ -36,7 +36,7 @@ class Tools
     static function getToken($x) { return 't'; } static function getShopDomainSsl($http = false) { return $GLOBALS['BASE']; } static function clearSmartyCache() {}
 }
 class Link
-{
+{ function getBaseLink($s=null,$ssl=null){ return 'https://shop.test/'; }
     function getModuleLink($m, $c, $p = [], $s = null) { return $GLOBALS['BASE'] . "/module/$m/$c"; }
     function getPageLink($p, $s = null, $l = null, $q = null) { return $GLOBALS['BASE'] . '/pl/' . ($p === 'index' ? '' : $p); }
     function getCategoryLink($id, $a = null, $l = null) { return $GLOBALS['BASE'] . "/pl/$id-kategoria"; }
@@ -198,7 +198,7 @@ Configuration::$v['SPC_AUDIT_DONE'] = 1;
 SpcAudit::save(['cache' => 'redis', 'pages' => ['off' => 412, 'on' => 96], 'cart' => ['core' => 388, 'lean' => 61], 'cartspeed' => ['off' => 73, 'on' => 1], 'nav' => ['off' => 581, 'smartprefetch' => 321, 'instantnav' => 188, 'all' => 187]]);
 $html = $m->getContent();
 ok(strpos($html, '3.1×') !== false && strpos($html, '4.3×') !== false && strpos($html, '6.4×') !== false, 'overview: the last audit as "× faster" for clicks, server and cart');
-ok(substr_count($html, 'data-spc-pane-start=') === 14 && substr_count($html, 'data-spc-tab=') === 13 && strpos($html, 'data-spc-bh-texts=') !== false, 'tabs: 13, and 14 section markers, the Behaviour report panel (the last closes)');
+ok(substr_count($html, 'data-spc-pane-start=') === 15 && substr_count($html, 'data-spc-tab=') === 14 && strpos($html, 'data-spc-bh-texts=') !== false && strpos($html, 'id="spc-agents"') !== false && strpos($html, 'data-steps="[&quot;signals') !== false, 'tabs: 14 (AI agents among them, its steps handed to its script), 15 section markers, the Behaviour report panel (the last closes)');
 file_put_contents(getenv('SPC_SETTINGS_HTML') ?: SPC_TMP . '/settings.html', $html);
 ok(strpos($html, 'href="mailto:mateusz.stelmasiak@gmail.com?subject=') !== false && strpos($html, 'Ask for a custom audit of my site') !== false, 'the head: ask for a custom audit (an e-mail link)');
 Configuration::set('SPC_CREDIT', 1);
