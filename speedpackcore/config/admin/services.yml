@@ -1,0 +1,10 @@
+# The visitor's own address behind Cloudflare (SpcCloudflare::realIp) on the back office pages
+# PrestaShop answers through Symfony: they check the employee's sign-in, and the IP kept in the
+# cookie, before any module hook runs.
+services:
+  speedpackcore.cloudflare_real_ip:
+    class: SpcCloudflareRealIp
+    file: '%kernel.project_dir%/modules/speedpackcore/classes/SpcCloudflareRealIp.php'
+    public: true
+    tags:
+      - { name: kernel.event_listener, event: kernel.request, method: onKernelRequest, priority: 4096 }

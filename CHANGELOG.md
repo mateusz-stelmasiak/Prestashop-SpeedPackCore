@@ -1,5 +1,9 @@
 # Changelog
 
+## SpeedPack Core 1.13.2
+
+- Cloudflare: fixes signing in to the back office behind Cloudflare. The visitor's own address was put back only for pages the classic dispatcher answers, while PrestaShop checks the employee's sign-in first on the Symfony side, where it still saw Cloudflare's address. With "check the cookie's IP" on, the two differed and the login page came back after every sign-in. The address is now replaced there too (config/admin/services.yml), before PrestaShop's own listeners look at it.
+
 ## SpeedPack Core 1.13.1
 
 - AI agents: the self-check works on hosts whose firewall refuses requests a site makes to itself (often mod_security). A refused request is tried again as a browser; when the server still refuses, every part that is in place (files, settings, routes) is shown as "set up" and counted, with a note explaining the refusal and pointing to the outside check (isitagentready.com).
